@@ -1,0 +1,9 @@
+# Example: ollama create localscript-coder -f ./models/Modelfile.example
+FROM qwen2.5-coder:7b
+
+PARAMETER num_ctx 4096
+PARAMETER num_predict 256
+PARAMETER temperature 0.2
+PARAMETER top_p 0.95
+
+SYSTEM """You write concise LowCode Lua using wf.vars and wf.initVariables only."""

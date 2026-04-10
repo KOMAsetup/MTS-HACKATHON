@@ -1,0 +1,164 @@
+[
+  {
+    "id": "pub_01_last_email",
+    "prompt": "Из полученного списка email получи последний.",
+    "context": {
+      "wf": {
+        "vars": {
+          "emails": [
+            "user1@example.com",
+            "user2@example.com",
+            "user3@example.com"
+          ]
+        }
+      }
+    },
+    "reference_code": "return wf.vars.emails[#wf.vars.emails]",
+    "eval": {
+      "type": "sandbox",
+      "expected_contains": ["wf.vars.emails", "#wf.vars.emails"]
+    }
+  },
+  {
+    "id": "pub_02_try_count",
+    "prompt": "Увеличивай значение переменной try_count_n на каждой итерации",
+    "context": {
+      "wf": {
+        "vars": {
+          "try_count_n": 3
+        }
+      }
+    },
+    "reference_code": "return wf.vars.try_count_n + 1",
+    "eval": {
+      "type": "sandbox",
+      "expected_contains": ["try_count_n", "+ 1", "return"]
+    }
+  },
+  {
+    "id": "pub_03_clear_rest",
+    "prompt": "Для полученных данных из предыдущего REST запроса очисти значения переменных ID, ENTITY_ID, CALL",
+    "context": {
+      "wf": {
+        "vars": {
+          "RESTbody": {
+            "result": [
+              {
+                "ID": 123,
+                "ENTITY_ID": 456,
+                "CALL": "example_call_1",
+                "OTHER_KEY_1": "value1"
+              },
+              {
+                "ID": 789,
+                "ENTITY_ID": 101,
+                "CALL": "example_call_2",
+                "EXTRA_KEY_1": "value3"
+              }
+            ]
+          }
+        }
+      }
+    },
+    "reference_code": "result = wf.vars.RESTbody.result\nfor _, filteredEntry in pairs(result) do\n  for key, value in pairs(filteredEntry) do\n    if key ~= \"ID\" and key ~= \"ENTITY_ID\" and key ~= \"CALL\" then\n      filteredEntry[key] = nil\n    end\n  end\nend\nreturn result",
+    "eval": {
+      "type": "sandbox",
+      "expected_contains": ["pairs", "RESTbody", "nil"]
+    }
+  },
+  {
+    "id": "pub_04_iso8601",
+    "prompt": "Преобразуй время из формата 'YYYYMMDD' и 'HHMMSS' в строку в формате ISO 8601 с использованием Lua.",
+    "context": {
+      "wf": {
+        "vars": {
+          "json": {
+            "IDOC": {
+              "ZCDF_HEAD": {
+                "DATUM": "20231015",
+                "TIME": "153000"
+              }
+            }
+          }
+        }
+      }
+    },
+    "reference_code": "DATUM = wf.vars.json.IDOC.ZCDF_HEAD.DATUM\nTIME = wf.vars.json.IDOC.ZCDF_HEAD.TIME",
+    "eval": {
+      "type": "heuristic",
+      "expected_contains": ["DATUM", "TIME", "string.format", "ZCDF_HEAD", "%02d", "sub"]
+    }
+  },
+  {
+    "id": "pub_05_ensure_array",
+    "prompt": "Как преобразовать структуру данных так, чтобы все элементы items в ZCDF_PACKAGES всегда были представлены в виде массивов, даже если они изначально не являются массивами",
+    "context": {
+      "wf": {
+        "vars": {
+          "json": {
+            "IDOC": {
+              "ZCDF_HEAD": {
+                "ZCDF_PACKAGES": [
+                  { "items": [{ "sku": "A" }, { "sku": "B" }] },
+                  { "items": { "sku": "C" } }
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "reference_code": "ensureAllItemsAreArrays",
+    "eval": {
+      "type": "heuristic",
+      "expected_contains": ["items", "ZCDF_PACKAGES", "type", "table", "_utils.array"]
+    }
+  },
+  {
+    "id": "pub_06_filter_csv",
+    "prompt": "Отфильтруй элементы из массива, чтобы включить только те, у которых есть значения в полях Discount или Markdown.",
+    "context": {
+      "wf": {
+        "vars": {
+          "parsedCsv": [
+            { "SKU": "A001", "Discount": "10%", "Markdown": "" },
+            { "SKU": "A002", "Discount": "", "Markdown": "5%" },
+            { "SKU": "A003", "Discount": null, "Markdown": null },
+            { "SKU": "A004", "Discount": "", "Markdown": "" }
+          ]
+        }
+      }
+    },
+    "reference_code": "_utils.array.new()",
+    "eval": {
+      "type": "sandbox",
+      "expected_contains": ["_utils.array.new", "parsedCsv", "Discount", "Markdown", "ipairs"]
+    }
+  },
+  {
+    "id": "pub_07_square_json",
+    "prompt": "Добавь переменную с квадратом числа (верни JSON с полями num и squared в формате lua{...}lua как в LowCode).",
+    "context": {},
+    "reference_code": "tonumber",
+    "eval": {
+      "type": "heuristic",
+      "expected_contains": ["num", "squared", "lua{", "}lua", "tonumber"]
+    }
+  },
+  {
+    "id": "pub_08_unix_time",
+    "prompt": "Конвертируй время в переменной recallTime в unix-формат.",
+    "context": {
+      "wf": {
+        "initVariables": {
+          "recallTime": "2023-10-15T15:30:00+00:00"
+        }
+      }
+    },
+    "reference_code": "wf.initVariables.recallTime",
+    "eval": {
+      "type": "heuristic",
+      "expected_contains": ["recallTime", "initVariables", "return"]
+    }
+  }
+]

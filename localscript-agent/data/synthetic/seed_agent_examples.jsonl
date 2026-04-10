@@ -1,0 +1,2 @@
+{"id": "agent_seed_01", "prompt": "Верни сумму полей a и b из wf.vars.pair.", "context": {"wf": {"vars": {"pair": {"a": 10, "b": 32}}}}, "reference_code": "return wf.vars.pair.a + wf.vars.pair.b", "tags": ["agent-written", "arithmetic"]}
+{"id": "agent_seed_02", "prompt": "Если wf.vars.flag истинно, верни строку yes, иначе no.", "context": {"wf": {"vars": {"flag": true}}}, "reference_code": "if wf.vars.flag then return \"yes\" else return \"no\" end", "tags": ["agent-written", "branch"]}

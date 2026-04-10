@@ -1,0 +1,6 @@
+timestamp,git_hash,prompt_version,ollama_model,num_ctx,num_predict,temperature,top_p,max_repair,M1_syntax_rate,M2_sandbox_rate,M3_heuristic_rate,M4_latency_p50_ms,notes
+2026-04-10T00:00:00Z,nogit,prompt_v2+num_batch,qwen2.5-coder:7b,4096,256,0.2,0.95,2,0,0,0,,ollama_unreachable; smoke 2 tasks; pytest+ruff OK
+2026-04-10T19:00:00Z,nogit,pre_patch_user_eval,qwen2.5-coder:7b,4096,256,0.2,0.95,2,,,,,HTTP eval 3/8 before prompt+static+eval_json fixes; rebuild app image and re-run
+2026-04-10T20:30:00Z,nogit,post_patch_4of8,qwen2.5-coder:7b,4096,256,0.2,0.95,2,1.0,1.0,0.5,,user HTTP 4/8; fails pub04 ISO heuristic pub05/06/07 heuristic; M3 rough 4/8 pass rate; next rebuild+eval after prompt_v4
+2026-04-10T21:15:00Z,nogit,user_6of8,qwen2.5-coder:7b,4096,256,0.2,0.95,2,,,,,HTTP 6/8; pub04 ISO heuristic pub07 luac invalid comma-assign; patch pub04 heuristics+%02d/sub pub07 prompts
+2026-04-10T22:00:00Z,nogit,user_7of8,qwen2.5-coder:7b,4096,256,0.2,0.95,2,,,,,HTTP 7/8; pub07 heuristic plain JSON string.format; build_user_message hard constraint

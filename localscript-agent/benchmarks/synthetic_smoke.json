@@ -1,0 +1,34 @@
+[
+  {
+    "id": "smoke_01_last_email",
+    "prompt": "Из полученного списка email получи последний.",
+    "context": {
+      "wf": {
+        "vars": {
+          "emails": ["user1@example.com", "user2@example.com", "user3@example.com"]
+        }
+      }
+    },
+    "reference_code": "return wf.vars.emails[#wf.vars.emails]",
+    "eval": {
+      "type": "sandbox",
+      "expected_contains": ["wf.vars.emails", "#wf.vars.emails"]
+    }
+  },
+  {
+    "id": "smoke_02_try_count",
+    "prompt": "Увеличивай значение переменной try_count_n на каждой итерации",
+    "context": {
+      "wf": {
+        "vars": {
+          "try_count_n": 3
+        }
+      }
+    },
+    "reference_code": "return wf.vars.try_count_n + 1",
+    "eval": {
+      "type": "sandbox",
+      "expected_contains": ["try_count_n", "+ 1", "return"]
+    }
+  }
+]

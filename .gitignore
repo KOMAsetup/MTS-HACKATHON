@@ -1,0 +1,45 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+env/
+.env
+.env.*
+!.env.example
+
+# packaging / build
+*.egg-info/
+.eggs/
+dist/
+build/
+
+# tool caches
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.ipynb_checkpoints/
+
+# secrets / local overrides (keep templates tracked)
+*.pem
+
+# models and large weights (pull via ollama; see README)
+*.gguf
+*.bin
+
+# local experiment logs and generated junk
+**/runs.local.csv
+artifacts/
+tmp/
+
+# IDE / OS
+.idea/
+.vscode/
+*.code-workspace
+.DS_Store
+Thumbs.db
+
+# Public sample PDF is tracked in git (no LFS) — do not add *.pdf here
