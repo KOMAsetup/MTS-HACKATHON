@@ -44,6 +44,11 @@ ollama pull qwen2.5-coder:7b
 
 Детали и переменные окружения: [`localscript-agent/README.md`](localscript-agent/README.md), эталон: [`localscript-agent/docs/experiments/BEST_CONFIG.md`](localscript-agent/docs/experiments/BEST_CONFIG.md).
 
+### Наблюдаемость и стабильный cold-start
+
+- `GET /health` возвращает не только параметры инференса, но и фактическую готовность: `ollama_reachable` (HTTP `/api/tags`) и `model_ready` (модель из `OLLAMA_MODEL` найдена в списке тегов).
+- В `localscript-agent/docker-compose.yml` включён **warmup** на старте API (`OLLAMA_WARMUP_ENABLED=true`), чтобы снизить риск первых таймаутов после поднятия контейнеров. Таймауты настраиваются через `OLLAMA_WARMUP_TIMEOUT_SECONDS` и `OLLAMA_HEALTH_TIMEOUT_SECONDS` (см. [`localscript-agent/README.md`](localscript-agent/README.md)).
+
 ## Архитектура (обзор)
 
 ```mermaid
@@ -62,9 +67,45 @@ flowchart LR
 **Уже есть**
 
 - Сервис и Docker Compose под GPU.
-- Скрипт оценки [`localscript-agent/scripts/eval_public.py`](localscript-agent/scripts/eval_public.py): **M1** `syntax_ok` (`luac`), **M2** `sandbox_ok` (где `eval.type == sandbox`), **M3** `heuristic_ok` (`expected_contains` в [`localscript-agent/benchmarks/public_tasks.json`](localscript-agent/benchmarks/public_tasks.json)); латентность в поле `latency_s`.
+- Скрипт оценки [`localscript-agent/scripts/eval_public.py`](localscript-agent/scripts/eval_public.py): печатает JSON с `metrics` и `results`. В `metrics`: **M1** `syntax_ok` (`luac`), **M1b** `static_ok`, **M2** `sandbox_ok` (где `eval.type == sandbox`), **M3** `heuristic_ok` (`expected_contains` в [`localscript-agent/benchmarks/public_tasks.json`](localscript-agent/benchmarks/public_tasks.json)), а также `infra_fail`, `generation_error`, `model_error`, `latency_avg`, `latency_p95`. В каждой строке `results[]`: `latency_s` и `errors[]`.
 - Журнал прогонов: [`localscript-agent/experiments/runs.csv`](localscript-agent/experiments/runs.csv), выводы: [`localscript-agent/docs/experiments/SUMMARY.md`](localscript-agent/docs/experiments/SUMMARY.md), эталон конфигурации: [`localscript-agent/docs/experiments/BEST_CONFIG.md`](localscript-agent/docs/experiments/BEST_CONFIG.md).
 - Quality gate: [`localscript-agent/scripts/quality.sh`](localscript-agent/scripts/quality.sh) (ruff + pytest).
+
+### Как воспроизвести замер метрик (публичная выборка)
+
+Ниже — рекомендуемый путь **внутри docker-compose**, чтобы совпадали версии кода, зависимости и наличие `lua`/`luac` в образе приложения.
+
+```bash
+cd localscript-agent
+docker compose up -d --build
+curl -s http://localhost:8080/health
+```
+
+In-process eval (генерация идёт через пайплайн напрямую, Ollama берётся из `OLLAMA_HOST` внутри compose-сети):
+
+```bash
+docker compose exec -T app python scripts/eval_public.py
+```
+
+HTTP eval (ближе к реальному использованию через FastAPI; внутри контейнера `app` адрес сервиса — `127.0.0.1:8080`):
+
+```bash
+docker compose exec -T app python scripts/eval_public.py --http --base-url http://127.0.0.1:8080
+```
+
+Сохранить JSON в файл на хосте (пример для bash):
+
+```bash
+mkdir -p artifacts
+docker compose exec -T app python scripts/eval_public.py --http --base-url http://127.0.0.1:8080 \
+  > artifacts/eval_public.http.json
+```
+
+Примечания:
+
+- Контракт OpenAPI для `/generate` остаётся минимальным (`prompt` обязателен), но сервис также поддерживает опциональные поля (`context`, `previous_code`, `feedback`) — это отражено в [`localscript-openapi.yaml`](localscript-openapi.yaml).
+- Если вы сохраняете JSON через PowerShell `Set-Content -Encoding utf8`, файл может получиться с UTF-8 BOM; при разборе используйте `encoding="utf-8-sig"`.
+- Публичный `8/8` — это контроль качества на [`localscript-agent/benchmarks/public_tasks.json`](localscript-agent/benchmarks/public_tasks.json); он **не заменяет** закрытую оценку жюри.
 
 **Нет или вне репозитория**
 

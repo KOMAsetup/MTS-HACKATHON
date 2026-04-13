@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -11,6 +12,19 @@ class Settings(BaseSettings):
     ollama_timeout_s: float = 120.0
     ollama_max_retries: int = 3
     ollama_retry_backoff_s: float = 1.5
+    ollama_health_timeout_s: float = Field(
+        default=5.0,
+        validation_alias=AliasChoices("OLLAMA_HEALTH_TIMEOUT_SECONDS", "ollama_health_timeout_s"),
+    )
+
+    ollama_warmup_enabled: bool = Field(
+        default=False,
+        validation_alias=AliasChoices("OLLAMA_WARMUP_ENABLED", "ollama_warmup_enabled"),
+    )
+    ollama_warmup_timeout_s: float = Field(
+        default=240.0,
+        validation_alias=AliasChoices("OLLAMA_WARMUP_TIMEOUT_SECONDS", "ollama_warmup_timeout_s"),
+    )
 
     num_ctx: int = 4096
     num_predict: int = 256

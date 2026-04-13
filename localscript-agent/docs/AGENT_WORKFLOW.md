@@ -52,7 +52,7 @@ sudo docker exec -it localscript-agent-ollama-1 ollama pull qwen2.5-coder:7b
 | In-process eval (Ollama на хосте, не в Docker) | `python3 scripts/eval_public.py` с `OLLAMA_HOST` на твой Ollama |
 | Проверка Ollama | `./scripts/check_ollama.sh` |
 
-Метрики из JSON вывода `eval_public`: **M1** — `syntax_ok`, **M2** — `sandbox_ok` (где есть sandbox), **M3** — `heuristic_ok`; доли по `pass` по задачам.
+Метрики из JSON вывода `eval_public` (поле `metrics`): **M1** — `syntax_ok`, **M1b** — `static_ok`, **M2** — `sandbox_ok` (где есть sandbox), **M3** — `heuristic_ok`; сводка по `passed/total`; дополнительно `infra_fail`, `generation_error`, `model_error`, `latency_avg`, `latency_p95`. Детали по задачам — в `results[]` (`latency_s`, `errors`, `pass`).
 
 Фиксация прогонов: `experiments/runs.csv`, выводы — `docs/experiments/SUMMARY.md`, эталон — `docs/experiments/BEST_CONFIG.md`.
 

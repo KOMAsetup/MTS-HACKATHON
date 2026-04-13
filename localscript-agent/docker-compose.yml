@@ -22,6 +22,9 @@ services:
       OLLAMA_NUM_GPU: "999"
       NUM_CTX: "4096"
       NUM_PREDICT: "256"
+      OLLAMA_WARMUP_ENABLED: "true"
+      OLLAMA_WARMUP_TIMEOUT_SECONDS: "240"
+      OLLAMA_HEALTH_TIMEOUT_SECONDS: "5"
     depends_on:
       - ollama
 

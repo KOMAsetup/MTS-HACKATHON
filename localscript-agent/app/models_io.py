@@ -28,4 +28,10 @@ class RefineRequest(BaseModel):
 class HealthResponse(BaseModel):
     status: str
     ollama_reachable: bool
+    model_ready: bool = False
     model: str
+    num_ctx: int
+    num_predict: int
+    batch: int
+    parallel: int
+    gpu_only: bool

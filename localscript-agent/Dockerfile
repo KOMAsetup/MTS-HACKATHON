@@ -10,6 +10,8 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 COPY app ./app
+COPY scripts ./scripts
+COPY benchmarks ./benchmarks
 
 ENV PYTHONUNBUFFERED=1
 ENV OLLAMA_HOST=http://ollama:11434

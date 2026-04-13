@@ -8,6 +8,48 @@ servers:
   - url: http://localhost:8080
 
 paths:
+  /health:
+    get:
+      summary: Проверка готовности сервиса и локального Ollama
+      operationId: health
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required:
+                  - status
+                  - ollama_reachable
+                  - model_ready
+                  - model
+                  - num_ctx
+                  - num_predict
+                  - batch
+                  - parallel
+                  - gpu_only
+                properties:
+                  status:
+                    type: string
+                    enum: [ok, degraded]
+                  ollama_reachable:
+                    type: boolean
+                  model_ready:
+                    type: boolean
+                  model:
+                    type: string
+                  num_ctx:
+                    type: integer
+                  num_predict:
+                    type: integer
+                  batch:
+                    type: integer
+                  parallel:
+                    type: integer
+                  gpu_only:
+                    type: boolean
+
   /generate:
     post:
       summary: Сгенерировать код по тексту задачи
@@ -23,6 +65,15 @@ paths:
                 prompt:
                   type: string
                   description: Текст задачи на естественном языке
+                context:
+                  type: object
+                  description: Опциональный JSON-контекст (например структура wf.vars / wf.initVariables)
+                previous_code:
+                  type: string
+                  description: Опционально — предыдущая версия Lua для итеративной доработки
+                feedback:
+                  type: string
+                  description: Опционально — текст обратной связи пользователя для доработки
             example:
               prompt: "Функция factorial(n) для n >= 0"
       responses:
@@ -43,3 +94,37 @@ paths:
                     if n <= 1 then return 1 end
                     return n * factorial(n - 1)
                   end
+
+  /refine:
+    post:
+      summary: Итеративно доработать Lua-код по обратной связи
+      operationId: refine
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [prompt, previous_code, feedback]
+              properties:
+                prompt:
+                  type: string
+                context:
+                  type: object
+                  description: Опциональный JSON-контекст (например wf.vars)
+                previous_code:
+                  type: string
+                feedback:
+                  type: string
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [code]
+                properties:
+                  code:
+                    type: string
+                    description: Сгенерированный Lua-код

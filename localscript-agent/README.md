@@ -31,6 +31,11 @@ ollama pull qwen2.5-coder:7b
 
 Переменные приложения: `NUM_CTX`, `NUM_PREDICT`, `OLLAMA_HOST`, `OLLAMA_MODEL`, `OLLAMA_NUM_GPU` (999 = все слои на GPU, без CPU offload весов на стороне llama.cpp/Ollama).
 
+Дополнительно (стабильность cold-start в Docker):
+
+- `OLLAMA_WARMUP_ENABLED` (в `docker-compose.yml` включено `true`): при старте API выполняется короткий запрос к Ollama с увеличенным таймаутом.
+- `OLLAMA_WARMUP_TIMEOUT_SECONDS`, `OLLAMA_HEALTH_TIMEOUT_SECONDS`
+
 ## Conda (разработка)
 
 ```bash
@@ -45,7 +50,7 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8080
 
 - `POST /generate` — тело: `{"prompt": "..."}`. Опционально: `context` (JSON), `previous_code`, `feedback` (итерация / уточнение).
 - `POST /refine` — явная вторая итерация: `prompt`, `previous_code`, `feedback`, опционально `context`.
-- `GET /health` — готовность приложения и доступность Ollama.
+- `GET /health` — готовность приложения, доступность Ollama и наличие выбранной модели в `/api/tags`, плюс параметры инференса (`num_ctx`, `num_predict`, `batch`, `parallel`, `gpu_only`).
 
 Пример:
 
