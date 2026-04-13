@@ -23,6 +23,10 @@ class Settings(BaseSettings):
     luac_path: str = "luac"
     lua_path: str = "lua"
 
+    validation_linter: bool = False
+    linter_path: str = "selene"
+    linter_timeout_s: float = 30.0
+
     # Ollama sets GPU layers; 999 typically means all layers on GPU (no CPU offload of weights)
     ollama_num_gpu: int = 999
 

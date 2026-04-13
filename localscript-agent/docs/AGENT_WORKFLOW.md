@@ -47,6 +47,7 @@ sudo docker exec -it localscript-agent-ollama-1 ollama pull qwen2.5-coder:7b
 | Действие | Команда |
 |----------|---------|
 | Линт + формат + тесты | `./scripts/quality.sh` |
+| Демо CLI к API (буфер `/debug`, attach, `/refine all`) | `python3 scripts/demo_cli.py` — см. [`README.md`](../README.md) и черновик [`CLI_CURRENT_BEHAVIOR.md`](CLI_CURRENT_BEHAVIOR.md) |
 | Бенчмарк через HTTP (нужен `:8080`) | `python3 scripts/eval_public.py --http --base-url http://127.0.0.1:8080` |
 | Быстрый смоук (2 задачи) | `python3 scripts/eval_public.py --http --base-url http://127.0.0.1:8080 --tasks benchmarks/synthetic_smoke.json` |
 | In-process eval (Ollama на хосте, не в Docker) | `python3 scripts/eval_public.py` с `OLLAMA_HOST` на твой Ollama |

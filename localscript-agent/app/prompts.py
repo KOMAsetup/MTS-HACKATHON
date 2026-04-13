@@ -86,6 +86,73 @@ def build_user_message(
     return "\n\n".join(parts)
 
 
+def compress_context_for_repair(
+    context: dict | None,
+    *,
+    max_chars: int = 1800,
+    max_depth: int = 4,
+    str_limit: int = 96,
+    list_limit: int = 4,
+) -> str:
+    def prune(obj: object, depth: int) -> object:
+        if depth >= max_depth:
+            return "…"
+        if isinstance(obj, dict):
+            return {str(k): prune(v, depth + 1) for k, v in obj.items()}
+        if isinstance(obj, list):
+            head = [prune(x, depth + 1) for x in obj[:list_limit]]
+            if len(obj) > list_limit:
+                head.append(f"… (+{len(obj) - list_limit} items)")
+            return head
+        if isinstance(obj, str):
+            s = obj
+            if len(s) > str_limit:
+                return s[: str_limit - 1] + "…"
+            return s
+        if isinstance(obj, (int, float, bool)) or obj is None:
+            return obj
+        return str(obj)[:str_limit]
+
+    if context is None:
+        return "{}"
+    pruned = prune(context, 0)
+    text = json.dumps(pruned, ensure_ascii=False, indent=2)
+    if len(text) > max_chars:
+        return text[: max_chars - 24] + "\n… (truncated)"
+    return text
+
+
+def repair_user_message_compact(
+    *,
+    task_prompt: str,
+    context: dict | None,
+    broken_code: str,
+    error_lines: list[str],
+    task_max_chars: int = 600,
+    feedback: str | None = None,
+    feedback_max_chars: int = 400,
+) -> str:
+    task = task_prompt.strip()
+    if len(task) > task_max_chars:
+        task = task[: task_max_chars - 1] + "…"
+    schema = compress_context_for_repair(context)
+    errs = "\n".join(error_lines)
+    code = broken_code.strip()
+    parts = [
+        f"Task (reminder):\n{task}",
+        f"Context (compact wf/schema):\n{schema}",
+        f"Validation errors:\n{errs}",
+        "Output ONLY the corrected Lua (no markdown, no explanation).",
+        f"Broken code:\n```lua\n{code}\n```",
+    ]
+    if feedback is not None and feedback.strip():
+        fb = feedback.strip()
+        if len(fb) > feedback_max_chars:
+            fb = fb[: feedback_max_chars - 1] + "…"
+        parts.insert(1, f"User feedback:\n{fb}")
+    return "\n\n".join(parts)
+
+
 def messages_for_chat(
     user_content: str,
     include_few_shot: bool = True,
@@ -104,11 +171,3 @@ def messages_for_chat(
         )
     msgs.append({"role": "user", "content": user_content})
     return msgs
-
-
-def repair_user_message(broken_code: str, errors: str) -> str:
-    return (
-        "The following Lua failed validation. Fix syntax and policy violations. "
-        "Output ONLY the corrected Lua.\n\n"
-        f"Errors:\n{errors}\n\nBroken code:\n```lua\n{broken_code.strip()}\n```"
-    )

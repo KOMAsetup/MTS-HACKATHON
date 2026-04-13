@@ -38,11 +38,12 @@ async def run_one_direct(
     task: dict,
 ) -> dict:
     t0 = time.perf_counter()
-    code, log = await generate_lua(
+    code, log, _dbg = await generate_lua(
         client,
         settings,
         task["prompt"],
         context=task.get("context"),
+        return_debug=False,
     )
     dt = time.perf_counter() - t0
     return {"code": code, "log": log, "latency_s": dt}

@@ -6,7 +6,12 @@ import httpx
 from fastapi import FastAPI, HTTPException
 
 from app.config import settings
-from app.models_io import GenerateRequest, GenerateResponse, HealthResponse, RefineRequest
+from app.models_io import (
+    GenerateRequest,
+    GenerateResponse,
+    HealthResponse,
+    RefineRequest,
+)
 from app.ollama_client import ollama_health
 from app.pipeline import generate_lua
 
@@ -32,36 +37,38 @@ async def health():
     )
 
 
-@app.post("/generate", response_model=GenerateResponse)
+@app.post("/generate", response_model=GenerateResponse, response_model_exclude_none=True)
 async def generate(body: GenerateRequest):
     client: httpx.AsyncClient = app.state.http
     try:
-        code, _log = await generate_lua(
+        code, _log, dbg = await generate_lua(
             client,
             settings,
             body.prompt,
             context=body.context,
             previous_code=body.previous_code,
             feedback=body.feedback,
+            return_debug=body.debug,
         )
-        return GenerateResponse(code=code)
+        return GenerateResponse(code=code, debug=dbg if body.debug else None)
     except Exception as e:
         raise HTTPException(status_code=502, detail=str(e)) from e
 
 
-@app.post("/refine", response_model=GenerateResponse)
+@app.post("/refine", response_model=GenerateResponse, response_model_exclude_none=True)
 async def refine(body: RefineRequest):
     """Second-turn refinement with explicit feedback (agentness / demo)."""
     client: httpx.AsyncClient = app.state.http
     try:
-        code, _log = await generate_lua(
+        code, _log, dbg = await generate_lua(
             client,
             settings,
             body.prompt,
             context=body.context,
             previous_code=body.previous_code,
             feedback=body.feedback,
+            return_debug=body.debug,
         )
-        return GenerateResponse(code=code)
+        return GenerateResponse(code=code, debug=dbg if body.debug else None)
     except Exception as e:
         raise HTTPException(status_code=502, detail=str(e)) from e
