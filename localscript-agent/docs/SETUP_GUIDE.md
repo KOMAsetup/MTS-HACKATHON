@@ -38,10 +38,11 @@ ollama pull qwen2.5-coder:7b
 ## Вариант 1 — Docker + GPU (как в README)
 
 Подходит, если установлены Docker Engine и поддержка GPU (часто пакет вроде `nvidia-container-toolkit`; точное имя зависит от дистрибутива).
+На Ubuntu команды ниже обычно запускаются с `sudo`.
 
 ```bash
 cd /path/to/<корень-репозитория>/localscript-agent
-docker compose up --build
+sudo docker compose up --build
 ```
 
 - API приложения: `http://127.0.0.1:8080`
@@ -149,7 +150,7 @@ uvicorn app.main:app --host 0.0.0.0 --port 8080
 
 | Симптом | Что проверить |
 |--------|----------------|
-| `unknown flag: --build` или `unknown command: docker compose` | На Ubuntu часто не установлен плагин Compose V2: `sudo apt install docker-compose-v2`, затем снова `docker compose up --build`. Либо классический пакет: `sudo apt install docker-compose` и команда `docker-compose up --build`. |
+| `unknown flag: --build` или `unknown command: docker compose` | На Ubuntu часто не установлен плагин Compose V2: `sudo apt install docker-compose-v2`, затем снова `sudo docker compose up --build`. Либо классический пакет: `sudo apt install docker-compose` и команда `sudo docker-compose up --build`. |
 | `connection refused` на 11434 | Запущен ли `ollama serve` или контейнер `ollama` из compose. |
 | Нет GPU в контейнере | Установлен ли `nvidia-container-toolkit`, в compose ли `gpus: all`. |
 | Ошибки `luac` / sandbox | В активном conda-окружении есть ли `lua`/`luac` (`which luac`). |
@@ -160,7 +161,7 @@ uvicorn app.main:app --host 0.0.0.0 --port 8080
 ## Краткий чеклист перед словом «готово»
 
 - [ ] `nvidia-smi` показывает GPU (если целишься в GPU).
-- [ ] Либо `docker compose up` работает, либо `ollama serve` + `ollama pull qwen2.5-coder:7b`.
+- [ ] Либо `sudo docker compose up` работает, либо `ollama serve` + `ollama pull qwen2.5-coder:7b`.
 - [ ] `curl http://127.0.0.1:11434/api/tags` возвращает JSON.
 - [ ] `conda activate localscript-agent`, `uvicorn` поднимает `:8080`.
 - [ ] `./scripts/quality.sh` проходит.

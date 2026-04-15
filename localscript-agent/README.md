@@ -37,7 +37,7 @@
 Из директории `localscript-agent`:
 
 ```bash
-docker compose up --build
+sudo docker compose up --build
 ```
 
 После старта:

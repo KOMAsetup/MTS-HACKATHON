@@ -45,6 +45,9 @@ git --version
 
 Официальный путь для Ubuntu: [Install Docker Engine on Ubuntu](https://docs.docker.com/engine/install/ubuntu/).
 
+> Ниже команды Docker для Ubuntu даны с `sudo` (`sudo docker ...` / `sudo docker compose ...`).
+> Если у вас уже настроена группа `docker`, можно запускать эти же команды без `sudo`.
+
 ### 2.1 Типовая последовательность (Ubuntu)
 
 Удалите старые пакеты Docker (если были), затем по документации Docker:
@@ -72,8 +75,8 @@ sudo systemctl status docker
 ### 2.3 Проверить Docker и Compose
 
 ```bash
-docker version
-docker compose version
+sudo docker version
+sudo docker compose version
 ```
 
 - **`docker version`** — должен показать и Client, и Server (если Server пустой — демон не запущен или нет прав).
@@ -86,7 +89,7 @@ docker compose version
 
   Либо используйте классический бинарь: `sudo apt install docker-compose` и везде вместо `docker compose` пишите `docker-compose` (с дефисом).
 
-### 2.4 Запуск Docker без `sudo` (рекомендуется)
+### 2.4 Запуск Docker без `sudo` (опционально)
 
 ```bash
 sudo usermod -aG docker "$USER"
@@ -95,7 +98,7 @@ sudo usermod -aG docker "$USER"
 **Выйдите из сессии** (logout) или перезагрузите компьютер, затем снова войдите. Проверка:
 
 ```bash
-docker run --rm hello-world
+sudo docker run --rm hello-world
 ```
 
 Должно напечататься сообщение об успешном запуске контейнера.
@@ -144,7 +147,7 @@ dpkg --print-architecture
 После настройки toolkit выполните (образ можно взять актуальный с [Docker Hub NVIDIA CUDA](https://hub.docker.com/r/nvidia/cuda) или из документации; важен успешный вывод `nvidia-smi` **из контейнера**):
 
 ```bash
-docker run --rm --gpus all nvidia/cuda:12.0.0-base-ubuntu22.04 nvidia-smi
+sudo docker run --rm --gpus all nvidia/cuda:12.0.0-base-ubuntu22.04 nvidia-smi
 ```
 
 - Если видите ту же GPU, что и на хосте — **готово**.
@@ -182,7 +185,7 @@ ls localscript-agent
 
 ```bash
 cd ~/путь/к/клону/localscript-agent
-docker compose up --build
+sudo docker compose up --build
 ```
 
 ### 6.1 Что происходит при первом запуске
@@ -196,8 +199,8 @@ docker compose up --build
 ### 6.2 Запуск в фоне (по желанию)
 
 ```bash
-docker compose up --build -d
-docker compose logs -f
+sudo docker compose up --build -d
+sudo docker compose logs -f
 ```
 
 Отключиться от логов: `Ctrl+C` (контейнеры останутся при `-d`).
@@ -241,26 +244,26 @@ curl -s http://127.0.0.1:8080/generate \
 Узнайте имя контейнера Ollama:
 
 ```bash
-docker ps --format '{{.Names}}\t{{.Image}}'
+sudo docker ps --format '{{.Names}}\t{{.Image}}'
 ```
 
 Найдите контейнер с образом **`ollama/ollama`**. Либо из каталога `localscript-agent`:
 
 ```bash
-docker compose ps
+sudo docker compose ps
 ```
 
 Ручная подгрузка (имя сервиса в compose — **`ollama`**):
 
 ```bash
 cd /путь/к/localscript-agent
-docker compose exec ollama ollama pull qwen2.5-coder:7b
+sudo docker compose exec ollama ollama pull qwen2.5-coder:7b
 ```
 
 Альтернатива через `docker exec` (подставьте **реальное** имя контейнера):
 
 ```bash
-docker exec -it localscript-agent-ollama-1 ollama pull qwen2.5-coder:7b
+sudo docker exec -it localscript-agent-ollama-1 ollama pull qwen2.5-coder:7b
 ```
 
 Снова проверьте: `curl -s http://127.0.0.1:11434/api/tags`.
@@ -272,7 +275,7 @@ docker exec -it localscript-agent-ollama-1 ollama pull qwen2.5-coder:7b
 Из каталога `localscript-agent`:
 
 ```bash
-docker compose down
+sudo docker compose down
 ```
 
 Данные моделей Ollama по умолчанию в **именованном volume** compose — при следующем `up` модель может не качаться заново.
@@ -324,7 +327,7 @@ python3 scripts/eval_public.py --http --base-url http://127.0.0.1:8080
 
 ## Запуск без NVIDIA GPU (опционально)
 
-На машине без GPU или без toolkit команда `docker compose up` может завершиться ошибкой из‑за директивы **`gpus: all`** в [`docker-compose.yml`](../localscript-agent/docker-compose.yml).
+На машине без GPU или без toolkit команда `sudo docker compose up` может завершиться ошибкой из‑за директивы **`gpus: all`** в [`docker-compose.yml`](../localscript-agent/docker-compose.yml).
 
 Варианты:
 
@@ -338,10 +341,10 @@ python3 scripts/eval_public.py --http --base-url http://127.0.0.1:8080
 | Симптом | Что сделать |
 |---------|-------------|
 | `unknown command: docker compose` | Установить плагин: `docker-compose-plugin` или пакет `docker-compose-v2`; либо `docker-compose` (v1). |
-| `permission denied` при `docker run` | Добавить пользователя в группу `docker`, перелогиниться. |
-| `could not select device driver` / нет GPU в контейнере | Установить и настроить **nvidia-container-toolkit**, перезапустить Docker; проверить `docker run --rm --gpus all ... nvidia-smi`. |
-| `connection refused` на **11434** | Дождаться старта контейнера `ollama`, смотреть `docker compose logs ollama`. |
-| Пустой `models` в `/api/tags` | Выполнить `docker compose exec ollama ollama pull qwen2.5-coder:7b`. |
+| `permission denied` при `docker run` | Либо запускать с `sudo`, либо добавить пользователя в группу `docker` и перелогиниться. |
+| `could not select device driver` / нет GPU в контейнере | Установить и настроить **nvidia-container-toolkit**, перезапустить Docker; проверить `sudo docker run --rm --gpus all ... nvidia-smi`. |
+| `connection refused` на **11434** | Дождаться старта контейнера `ollama`, смотреть `sudo docker compose logs ollama`. |
+| Пустой `models` в `/api/tags` | Выполнить `sudo docker compose exec ollama ollama pull qwen2.5-coder:7b`. |
 | Порт **8080** или **11434** занят | Остановить другой сервис или изменить `ports:` в `docker-compose.yml`. |
 | Ошибки **`luac`** при conda-запуске | В активном env должен быть пакет `lua` из conda-forge (`which luac`). |
 
