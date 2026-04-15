@@ -1,93 +1,230 @@
-# LocalScript — локальный AI-агент для Lua (хакатон)
+# LocalScript Agent (merge)
 
-Репозиторий — решение для трека **LocalScript**: локальная агентская система на **Python** и **open-source LLM** (Ollama), без внешних LLM API в runtime. Пользователь формулирует задачу на естественном языке, получает Lua-код; сервис поддерживает итерации (`/generate`, `/refine`), валидацию (`luac`, статические правила, sandbox где задано в бенчмарке) и воспроизводимый запуск через **Docker Compose**.
+Локальный агент для генерации и доработки Lua-кода под LowCode-сценарии.  
+Стек: `FastAPI` + `Ollama` + внутренний `repair loop` + статические проверки + sandbox.
 
-Полный текст условия: [`instruction.txt`](instruction.txt). Контракт API для сдачи: [`localscript-openapi.yaml`](localscript-openapi.yaml).
+Проект работает в **tim-style API** (stateless): сервер не хранит сессию, историю диалога
+клиент передает в теле запроса (`clarification_history`, `refinement_history`, `debug_history`).
 
-## Структура репозитория
+Полный API-контракт: [`../localscript-openapi.yaml`](../localscript-openapi.yaml)
 
-| Путь | Назначение |
-|------|------------|
-| [`localscript-agent/`](localscript-agent/) | Основной код: FastAPI (`/generate`, `/refine`, `/health`), клиент Ollama, промпты, извлечение Lua, `luac`, sandbox, пайплайн repair |
-| [`localscript-openapi.yaml`](localscript-openapi.yaml) | OpenAPI-контракт |
-| [`instruction.txt`](instruction.txt) | Условие хакатона (оригинал) |
-| [`Публичная выборка LocalScript.pdf`](Публичная%20выборка%20LocalScript.pdf) | Публичная выборка задач (файл **в репозитории**, обычный `git`, **без Git LFS**; размер ~350 KiB) |
+## Что есть в текущей версии
 
-## Однострочный запуск (требование жюри)
+- tim-style эндпоинты: `POST /generate`, `POST /refine`, `POST /debug`, `GET /health`
+- расширенный `health` (готовность Ollama + модель + инференс-параметры)
+- repair loop с отчетом по попыткам (`attempts`, `checks`, `degraded`, `stop_reason`)
+- семантическая валидация (опционально, через `Context` в prompt)
+- demo CLI для полного сценария работы с API
+- Streamlit GUI с chat history (save/load/clear + загрузка выбранного шага)
+- скрипты оценки на публичной выборке и синтетические утилиты
 
-Из **корня клона** репозитория:
+## Архитектура (кратко)
+
+- `app/main.py` - FastAPI-приложение и HTTP-эндпоинты
+- `app/pipeline.py` - orchestration generate/refine/debug, repair loop
+- `app/prompts.py` - system/user prompts и сборка сообщений для LLM
+- `app/code_checks.py` - run_all_checks (syntax/static/sandbox/semantic)
+- `app/semantic.py` - правила семантической валидации
+- `app/sandbox.py` - безопасный запуск Lua в sandbox
+- `app/ollama_client.py` - вызовы Ollama, warmup, health-ready проверки
+- `scripts/demo_cli.py` - интерактивный CLI-клиент к API
+- `scripts/demo_streamlit.py` - GUI-клиент к API
+
+## Установка и запуск
+
+### Вариант 1 (рекомендуется): Docker + GPU
+
+Из директории `localscript-agent`:
 
 ```bash
-cd localscript-agent && docker compose up --build
+docker compose up --build
 ```
 
-- API: `http://localhost:8080`
-- Ollama: `http://localhost:11434`
+После старта:
 
-Подробные шаги установки окружения: [Установка на Linux](docs/INSTALL_LINUX.md), [Установка на Windows / WSL](docs/INSTALL_WINDOWS.md).
+- API: `http://127.0.0.1:8080`
+- Ollama: `http://127.0.0.1:11434`
+- модель по умолчанию: `qwen2.5-coder:7b`
 
-## Параметры Ollama (как в условии)
+Основные переменные окружения:
 
-Зафиксированная команда загрузки модели:
+- `OLLAMA_HOST`, `OLLAMA_MODEL`, `OLLAMA_NUM_GPU`
+- `NUM_CTX`, `NUM_PREDICT`, `NUM_BATCH`, `NUM_PARALLEL`
+- `OLLAMA_WARMUP_ENABLED`, `OLLAMA_WARMUP_TIMEOUT_SECONDS`
+- `OLLAMA_HEALTH_TIMEOUT_SECONDS`
+
+### Вариант 2: локальная разработка (conda + uvicorn)
 
 ```bash
-ollama pull qwen2.5-coder:7b
+./scripts/bootstrap_dev.sh
+conda activate localscript-agent
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8080
 ```
 
-| Параметр | Значение |
-|----------|----------|
-| `num_ctx` | 4096 |
-| `num_predict` | 256 |
-| batch | 1 |
-| parallel | 1 |
-| CPU offload весов | не использовать (в compose: `OLLAMA_NUM_GPU=999`) |
+Требуется `lua` и `luac` в `PATH`.
 
-Детали и переменные окружения: [`localscript-agent/README.md`](localscript-agent/README.md), эталон: [`localscript-agent/docs/experiments/BEST_CONFIG.md`](localscript-agent/docs/experiments/BEST_CONFIG.md).
+### Подробные инструкции по установке
 
-## Архитектура (обзор)
+- [`../docs/INSTALL_WINDOWS.md`](../docs/INSTALL_WINDOWS.md)
+- [`../docs/INSTALL_LINUX.md`](../docs/INSTALL_LINUX.md)
+- [`docs/SETUP_GUIDE.md`](docs/SETUP_GUIDE.md)
 
-```mermaid
-flowchart LR
-  Client[Client_HTTP] --> API[FastAPI_app]
-  API --> Pipeline[pipeline_generate_repair]
-  Pipeline --> Ollama[Ollama_local]
-  Pipeline --> Luac[luac_static]
-  Pipeline --> Sandbox[sandbox_lua]
+## Эксплуатация API
+
+Сервис stateless: для многошаговой логики клиент сам передает историю в каждом запросе.
+
+### Эндпоинты
+
+- `GET /health` - проверка статуса приложения, доступности Ollama и готовности модели
+- `POST /generate` - старт новой задачи (может вернуть `clarification` до кода)
+- `POST /refine` - доработка кода по `refinement_history` (обязательное непустое поле)
+- `POST /debug` - анализ переданного Lua-кода + 1 раунд LLM-ревью
+
+### Пример `GET /health`
+
+```bash
+curl -s http://127.0.0.1:8080/health
 ```
 
-Расширенное описание: [`localscript-agent/docs/architecture.md`](localscript-agent/docs/architecture.md).
+### Пример `POST /generate`
 
-## Что уже есть / черновики / дорожная карта
+```bash
+curl -s http://127.0.0.1:8080/generate \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "prompt": "Напиши Lua, который возвращает последний email из wf.vars.emails",
+    "clarification_history": [],
+    "max_repair_attempts": 2
+  }'
+```
 
-**Уже есть**
+### Пример `POST /refine`
 
-- Сервис и Docker Compose под GPU.
-- Скрипт оценки [`localscript-agent/scripts/eval_public.py`](localscript-agent/scripts/eval_public.py): **M1** `syntax_ok` (`luac`), **M2** `sandbox_ok` (где `eval.type == sandbox`), **M3** `heuristic_ok` (`expected_contains` в [`localscript-agent/benchmarks/public_tasks.json`](localscript-agent/benchmarks/public_tasks.json)); латентность в поле `latency_s`.
-- Журнал прогонов: [`localscript-agent/experiments/runs.csv`](localscript-agent/experiments/runs.csv), выводы: [`localscript-agent/docs/experiments/SUMMARY.md`](localscript-agent/docs/experiments/SUMMARY.md), эталон конфигурации: [`localscript-agent/docs/experiments/BEST_CONFIG.md`](localscript-agent/docs/experiments/BEST_CONFIG.md).
-- Quality gate: [`localscript-agent/scripts/quality.sh`](localscript-agent/scripts/quality.sh) (ruff + pytest).
+```bash
+curl -s http://127.0.0.1:8080/refine \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "prompt": "То же задание",
+    "refinement_history": [
+      {
+        "assistant_code": "return wf.vars.emails[#wf.vars.emails]",
+        "user_feedback": "Добавь проверку на пустой массив",
+        "checks": []
+      }
+    ],
+    "max_repair_attempts": 2
+  }'
+```
 
-**Нет или вне репозитория**
+### Пример `POST /debug`
 
-- Баллы жюри по **закрытой** выборке.
-- Формальное подтверждение **пиковой VRAM ≤ 8 GB** на эталонном сценарии жюри — в репозитории чеклисты и смоук: [`localscript-agent/docs/vram_smoke.md`](localscript-agent/docs/vram_smoke.md), [`localscript-agent/docs/hardware.md`](localscript-agent/docs/hardware.md); замеры при сдаче — ответственность команды.
+```bash
+curl -s http://127.0.0.1:8080/debug \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "code": "return wf.initVariables(\"x\")",
+    "prompt": "Почему этот код падает в sandbox?",
+    "debug_history": []
+  }'
+```
 
-**План улучшений (кратко)**
+### Коды ответов
 
-- Сильнее опираться на **проверку смысла** (sandbox / эталонный вывод), а не только на эвристики строк — см. [`localscript-agent/docs/AGENT_WORKFLOW.md`](localscript-agent/docs/AGENT_WORKFLOW.md); при необходимости расширить `eval` в JSON (например `expected_output`).
-- Опционально QLoRA по [`localscript-agent/training/README.md`](localscript-agent/training/README.md) на размеченных эталонах.
-- Артефакты сдачи (C4, видео, презентация): статус и чеклист — [`localscript-agent/docs/SUBMISSION.md`](localscript-agent/docs/SUBMISSION.md). В корневом README CI/LICENSE можно добавить позже по согласованию команды.
+- `200` - успешный ответ
+- `422` - ошибка валидации входного тела
+- `502` - ошибка upstream/parsing/runtime в пайплайне
 
-## Зависимости (сводка)
+## Эксплуатация CLI
 
-| Слой | Содержимое |
-|------|------------|
-| Система | Linux x86_64 или Windows с **WSL2** / Docker Desktop; для GPU — драйвер NVIDIA |
-| Docker | Docker Engine + Compose v2 (`docker compose`); образы `ollama/ollama`, сборка приложения из [`localscript-agent/Dockerfile`](localscript-agent/Dockerfile) |
-| Python (conda) | Python **3.11**, пакет `lua` (даёт `luac`) — см. [`localscript-agent/environment.yml`](localscript-agent/environment.yml) |
-| PyPI | [`localscript-agent/requirements.txt`](localscript-agent/requirements.txt): FastAPI, Uvicorn, httpx, pydantic, pydantic-settings; dev: pytest, ruff |
+CLI-файл: `scripts/demo_cli.py`  
+Назначение: интерактивная работа с `generate/refine/debug`, контекстом и логом ответов.
 
-## Документы и точки входа
+Запуск:
 
-- [README подпроекта `localscript-agent`](localscript-agent/README.md) — API, примеры `curl`, eval, conda.
-- [Гайд установки (детали Ollama/Docker)](localscript-agent/docs/SETUP_GUIDE.md)
-- [Сдача на платформе](localscript-agent/docs/SUBMISSION.md)
+```bash
+python scripts/demo_cli.py
+```
+
+Полезные флаги:
+
+- `--base-url` - адрес API
+- `--timeout` - таймаут HTTP в секундах
+- `--context-file` - JSON-контекст, который будет встроен в prompt
+- `--verbose` - печать полного JSON-ответа
+
+Базовые команды внутри CLI:
+
+- `/help`, `/quit`
+- `/health`, `/settings`, `/url <url>`
+- `/ctx <file.json>`, `/ctx show`, `/ctx clear`
+- `/log`, `/log N`, `/log all`, `/log clear`
+- `/refine`
+- `/debug`, `/debug <text>`, `/debug new`
+
+Важно: удобная подстановка кода в `/debug` (из предыдущих шагов) реализована на стороне
+CLI и не является частью HTTP-контракта.
+
+## Эксплуатация GUI
+
+GUI-файл: `scripts/demo_streamlit.py`  
+Назначение: визуальная работа с `health/generate/refine/debug`, историями и семантикой.
+
+Запуск:
+
+```bash
+python -m streamlit run scripts/demo_streamlit.py
+```
+
+Ключевые возможности GUI:
+
+- поля для `prompt`, `clarification_history`, `refinement_history`, `debug_history`
+- настройка `max_repair_attempts`
+- переключатель `Enable semantic validation for this request`
+- поле `Semantic rules JSON`
+- блок `Action readiness` перед отправкой запроса
+- chat history:
+  - `Save chat history`
+  - `Load chat history`
+  - `Clear chat history`
+  - `Load selected turn into response panel`
+
+Файл истории GUI: `artifacts/gui_chat_history.jsonl`
+
+## Проверка качества и метрик
+
+### Тесты
+
+```bash
+pytest -q
+```
+
+### Линтер
+
+```bash
+ruff check .
+```
+
+### Публичная выборка
+
+HTTP-режим:
+
+```bash
+python scripts/eval_public.py --http --base-url http://127.0.0.1:8080
+```
+
+Direct/in-process режим:
+
+```bash
+python scripts/eval_public.py
+```
+
+## Дополнительная документация
+
+- [`docs/architecture.md`](docs/architecture.md)
+- [`docs/AGENT_WORKFLOW.md`](docs/AGENT_WORKFLOW.md)
+- [`docs/CLI_CURRENT_BEHAVIOR.md`](docs/CLI_CURRENT_BEHAVIOR.md)
+- [`docs/hardware.md`](docs/hardware.md)
+- [`docs/vram_smoke.md`](docs/vram_smoke.md)
+- [`docs/experiments/BEST_CONFIG.md`](docs/experiments/BEST_CONFIG.md)
+- [`docs/SUBMISSION.md`](docs/SUBMISSION.md)
+- [`models/Modelfile.example`](models/Modelfile.example)
