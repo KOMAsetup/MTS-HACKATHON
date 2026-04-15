@@ -17,6 +17,7 @@ class CliSettings(BaseSettings):
         LOCALSCRIPT_CLI_BASE_URL=http://localhost:8080
         LOCALSCRIPT_CLI_HTTP_TIMEOUT_S=300
         LOCALSCRIPT_CLI_DEFAULT_CONTEXT_FILE=/path/to/context.json
+        LOCALSCRIPT_CLI_VERBOSE=true
     """
 
     model_config = SettingsConfigDict(
@@ -30,21 +31,15 @@ class CliSettings(BaseSettings):
     http_timeout_s: float = Field(
         default=180.0,
         ge=1.0,
-        description="HTTP timeout for /generate and /refine",
+        description="HTTP timeout for API calls",
     )
     default_context_file: str | None = Field(
         default=None,
-        description="Optional path to JSON file used as request `context` until cleared in CLI",
+        description="Optional JSON file merged into the prompt as a Context: block until cleared",
     )
-    request_server_debug: bool = Field(
-        default=True,
-        description="If true, send debug:true on /generate and /refine; responses buffered for /debug",
-    )
-    attach_previous_code: bool = Field(
+    verbose: bool = Field(
         default=False,
-        description=(
-            "If true, each /generate sends previous_code=last assistant code (debug/fix mode)"
-        ),
+        description="If true, print full JSON responses after generate/refine/debug",
     )
 
 

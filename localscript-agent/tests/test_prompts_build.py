@@ -1,4 +1,6 @@
+from app.models_io import CheckItem, DebugHistoryTurn
 from app.prompts import (
+    build_debug_user_message,
     build_user_message,
     compress_context_for_repair,
     repair_user_message_compact,
@@ -27,6 +29,54 @@ def test_compress_context_for_repair_truncates_long_strings():
 
 def test_compress_context_for_repair_empty():
     assert compress_context_for_repair(None) == "{}"
+
+
+def test_build_debug_user_message_includes_history_transcript():
+    hist = [
+        DebugHistoryTurn(
+            user_code="return 1",
+            user_prompt="why?",
+            checks=[CheckItem(id="syntax_0", stage="syntax", passed=True, message="")],
+            problem_description="Looks fine.",
+            suggested_code="return 2",
+        )
+    ]
+    msg = build_debug_user_message(
+        "return 3",
+        "what is 2+2?",
+        hist,
+        "All static checks passed.",
+    )
+    assert "what is 2+2?" in msg
+    assert "PRIMARY TASK" in msg
+    assert msg.index("PRIMARY TASK") > msg.index("return 3")
+    assert "Earlier debug round 1" in msg
+    assert "User's code then:" in msg and "return 1" in msg
+    assert "Static checks then" in msg and "all_checks_passed: true" in msg
+    assert "User question / note then:" in msg and "why?" in msg
+    assert "Assistant problem_description then:" in msg and "Looks fine." in msg
+    assert "Assistant suggested_code then:" in msg and "return 2" in msg
+    assert "return 3" in msg
+
+
+def test_build_debug_user_message_history_only_failed_checks_listed():
+    hist = [
+        DebugHistoryTurn(
+            user_code="bad",
+            user_prompt=None,
+            checks=[
+                CheckItem(id="s0", stage="syntax", passed=False, message="near '='"),
+                CheckItem(id="st0", stage="static", passed=True, message=""),
+            ],
+            problem_description="fix",
+            suggested_code="return 0",
+        )
+    ]
+    msg = build_debug_user_message("return 1", None, hist, "all_checks_passed: true")
+    assert "all_checks_passed: false" in msg
+    assert "Failed checks:" in msg
+    assert "syntax: near '='" in msg
+    assert "static:" not in msg
 
 
 def test_repair_user_message_compact_contains_errors_and_code():

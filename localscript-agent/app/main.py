@@ -7,13 +7,15 @@ from fastapi import FastAPI, HTTPException
 
 from app.config import settings
 from app.models_io import (
+    DebugRequest,
+    DebugResponse,
     GenerateRequest,
     GenerateResponse,
     HealthResponse,
     RefineRequest,
 )
 from app.ollama_client import ollama_health
-from app.pipeline import generate_lua
+from app.pipeline import run_debug_pipeline, run_generate_pipeline, run_refine_pipeline
 
 
 @asynccontextmanager
@@ -41,34 +43,30 @@ async def health():
 async def generate(body: GenerateRequest):
     client: httpx.AsyncClient = app.state.http
     try:
-        code, _log, dbg = await generate_lua(
-            client,
-            settings,
-            body.prompt,
-            context=body.context,
-            previous_code=body.previous_code,
-            feedback=body.feedback,
-            return_debug=body.debug,
-        )
-        return GenerateResponse(code=code, debug=dbg if body.debug else None)
+        return await run_generate_pipeline(client, settings, body)
+    except ValueError as e:
+        raise HTTPException(status_code=502, detail=str(e)) from e
     except Exception as e:
         raise HTTPException(status_code=502, detail=str(e)) from e
 
 
 @app.post("/refine", response_model=GenerateResponse, response_model_exclude_none=True)
 async def refine(body: RefineRequest):
-    """Second-turn refinement with explicit feedback (agentness / demo)."""
     client: httpx.AsyncClient = app.state.http
     try:
-        code, _log, dbg = await generate_lua(
-            client,
-            settings,
-            body.prompt,
-            context=body.context,
-            previous_code=body.previous_code,
-            feedback=body.feedback,
-            return_debug=body.debug,
-        )
-        return GenerateResponse(code=code, debug=dbg if body.debug else None)
+        return await run_refine_pipeline(client, settings, body)
+    except ValueError as e:
+        raise HTTPException(status_code=502, detail=str(e)) from e
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=str(e)) from e
+
+
+@app.post("/debug", response_model=DebugResponse, response_model_exclude_none=True)
+async def debug(body: DebugRequest):
+    client: httpx.AsyncClient = app.state.http
+    try:
+        return await run_debug_pipeline(client, settings, body)
+    except ValueError as e:
+        raise HTTPException(status_code=502, detail=str(e)) from e
     except Exception as e:
         raise HTTPException(status_code=502, detail=str(e)) from e

@@ -94,6 +94,21 @@ def run_all_checks(
     return CheckResult(ok=len(violations) == 0, violations=tuple(violations))
 
 
+def result_to_check_items(result: CheckResult) -> list:
+    """Map violations to API CheckItem list; empty list means all checks passed."""
+    from app.models_io import CheckItem
+
+    return [
+        CheckItem(
+            id=f"{v.stage.value}_{i}",
+            stage=v.stage.value,
+            passed=False,
+            message=v.message,
+        )
+        for i, v in enumerate(result.violations)
+    ]
+
+
 def log_check_outcome(
     *,
     outcome: str,

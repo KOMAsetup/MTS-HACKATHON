@@ -1,54 +1,95 @@
 from __future__ import annotations
 
+from enum import Enum
 from typing import Any
 
 from pydantic import BaseModel, Field
 
 
-class GenerateRequest(BaseModel):
-    """OpenAPI requires `prompt`; optional fields extend PDF-style tasks and agent loop."""
-
-    prompt: str = Field(..., min_length=1)
-    context: dict[str, Any] | None = None
-    previous_code: str | None = None
-    feedback: str | None = None
-    debug: bool = Field(
-        default=False,
-        description="If true, response includes validation/repair diagnostics",
-    )
+class ResponseKind(str, Enum):
+    clarification = "clarification"
+    code = "code"
 
 
-class GenerateDebugMeta(BaseModel):
-    """Populated when request.debug is true."""
-
-    first_validation_ok: bool
-    final_validation_ok: bool
-    llm_rounds: int = Field(ge=1, description="Ollama chat calls: initial + each repair")
-    repair_rounds_used: int = Field(
-        ge=0,
-        description="Repair loop iterations that ran (0 if validation passed on first code)",
-    )
-    max_repair_attempts: int = Field(ge=0)
-    degraded: bool = Field(
-        description="True if final code still fails static validation after all repairs",
-    )
-    log: list[str]
+class StopReason(str, Enum):
+    validation_ok = "validation_ok"
+    max_repairs_exhausted = "max_repairs_exhausted"
+    error = "error"
 
 
-class GenerateResponse(BaseModel):
+class CheckItem(BaseModel):
+    id: str
+    stage: str
+    passed: bool
+    message: str = ""
+
+
+class AttemptRecord(BaseModel):
+    index: int = Field(ge=0)
+    kind: str  # "initial" | "repair"
     code: str
-    debug: GenerateDebugMeta | None = None
+    checks: list[CheckItem] = Field(default_factory=list)
+
+
+class ClarificationTurn(BaseModel):
+    model_question: str
+    user_answer: str
+
+
+class RefinementStep(BaseModel):
+    assistant_code: str = Field(..., min_length=1)
+    user_feedback: str = Field(..., min_length=1)
+    checks: list[CheckItem] = Field(..., min_length=0)
+
+
+class GenerateRequest(BaseModel):
+    prompt: str = Field(..., min_length=1)
+    max_repair_attempts: int | None = Field(
+        default=None,
+        ge=0,
+        description="Override max repair rounds; capped server-side",
+    )
+    clarification_history: list[ClarificationTurn] = Field(default_factory=list)
 
 
 class RefineRequest(BaseModel):
     prompt: str = Field(..., min_length=1)
-    context: dict[str, Any] | None = None
-    previous_code: str = Field(..., min_length=1)
-    feedback: str = Field(..., min_length=1)
-    debug: bool = Field(
-        default=False,
-        description="If true, response includes validation/repair diagnostics",
-    )
+    refinement_history: list[RefinementStep] = Field(..., min_length=1)
+    max_repair_attempts: int | None = Field(default=None, ge=0)
+
+
+class GenerateResponse(BaseModel):
+    response_kind: ResponseKind
+    clarification_question: str | None = None
+    code: str | None = None
+    attempts: list[AttemptRecord] = Field(default_factory=list)
+    all_checks_passed: bool | None = None
+    degraded: bool | None = None
+    stop_reason: StopReason | None = None
+    llm_rounds: int | None = None
+    repair_rounds_used: int | None = None
+    parse_warning: str | None = None
+
+
+class DebugHistoryTurn(BaseModel):
+    user_code: str
+    user_prompt: str | None = None
+    checks: list[CheckItem]
+    problem_description: str
+    suggested_code: str
+
+
+class DebugRequest(BaseModel):
+    code: str = Field(..., min_length=1)
+    prompt: str | None = None
+    debug_history: list[DebugHistoryTurn] = Field(default_factory=list)
+
+
+class DebugResponse(BaseModel):
+    checks: list[CheckItem]
+    all_checks_passed: bool
+    problem_description: str
+    suggested_code: str
 
 
 class HealthResponse(BaseModel):

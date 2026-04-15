@@ -20,6 +20,10 @@ class Settings(BaseSettings):
     top_p: float = 0.95
 
     max_repair_attempts: int = 2
+    max_repair_server_cap: int = 5
+
+    # If false, generate uses code-only JSON (no clarification branch); for deterministic eval.
+    clarification_mode: bool = True
     luac_path: str = "luac"
     lua_path: str = "lua"
 

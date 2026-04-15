@@ -18,35 +18,22 @@ if str(ROOT) not in sys.path:
 
 from app.cli_settings import CliSettings, load_json_context
 
-DEBUG_BUFFER_MAX = 32
-REFINE_ALL_HISTORY_MAX_STEPS = 40
-
-
-def _refine_count(history: list[dict[str, Any]]) -> int:
-    return sum(1 for h in history if h.get("type") == "refine")
-
-
-def _merge_refine_context(
-    base: dict[str, Any] | None,
-    refine_history: list[dict[str, Any]],
-) -> dict[str, Any]:
-    out: dict[str, Any] = {}
-    if base:
-        out.update(base)
-    trimmed = refine_history[-REFINE_ALL_HISTORY_MAX_STEPS:]
-    out["refine_all_history"] = trimmed
-    return out
+RESPONSE_LOG_BUFFER_MAX = 25
 
 
 def _banner(base_url: str) -> None:
     print(
         "LocalScript demo CLI\n"
         f"  API: {base_url.rstrip('/')}\n"
-        "  Type a task and Enter — POST /generate\n"
-        "  Commands: /help  /health  /settings  /url <base>  /ctx <file.json>|clear|show\n"
-        "            /refine  /refine all  (see /help)\n"
-        "            /debug  /debug N  /debug all  /debug clear  /debug on  /debug off  /debug status\n"
-        "            /attach on|off|status  (append last code to next /generate as previous_code)\n"
+        "  Plain line — POST /generate (new task; local refine chain reset)\n"
+        "  Commands: /help  /health  /settings  /url <base>\n"
+        "            /ctx <file.json>|clear|show  (merge JSON into prompt as Context:)\n"
+        "            /verbose on|off|status\n"
+        "            /log [N|all|clear]  (last N full JSON responses; max "
+        f"{RESPONSE_LOG_BUFFER_MAX})\n"
+        "            /refine  (multi-line feedback; uses refinement_history)\n"
+        "            /debug …          POST /debug (см. README «Демо CLI: команда /debug»)\n"
+        "            /debug new        сброс debug_history и подсказки suggestion\n"
         "            /quit\n"
     )
 
@@ -54,24 +41,17 @@ def _banner(base_url: str) -> None:
 def _cmd_help() -> None:
     print(
         "Commands:\n"
-        "  /help          this text\n"
-        "  /health        GET /health\n"
-        "  /settings      show effective CLI settings\n"
-        "  /url <url>     set base URL for this session\n"
-        "  /ctx <path>    load JSON context from file\n"
-        "  /ctx clear     drop context\n"
-        "  /ctx show      print compact JSON preview\n"
-        "  /refine        refine last code (multi-line feedback, empty line to send)\n"
-        "  /refine all    after ≥1 /refine: next /refine adds full chain to context.refine_all_history\n"
-        "  /debug         print last buffered validation/repair meta (no extra generate)\n"
-        "  /debug N       print last N buffer entries (newest last)\n"
-        "  /debug all     print full buffer (newest last)\n"
-        "  /debug clear   empty the buffer\n"
-        "  /debug on|off  ask API for debug JSON on each request (fills buffer)\n"
-        "  /debug status  show on/off and buffer size\n"
-        "  /attach on|off  next plain prompts send API previous_code=last printed Lua\n"
-        "  /attach status  show attach mode and whether last_code exists\n"
-        "  /quit          exit\n"
+        "  /help           this text\n"
+        "  /health         GET /health\n"
+        "  /settings       effective CLI settings\n"
+        "  /url <url>      base URL for this session\n"
+        "  /ctx …          load/show/clear JSON merged into generate prompt\n"
+        "  /verbose on|off|status   verbose prints full JSON after each call\n"
+        "  /log [N|all|clear]      ring buffer of full server JSON (generate/refine/debug)\n"
+        "  /refine         refine last code (multi-line feedback, empty line to cancel)\n"
+        "  /debug …        POST /debug — подробности в README (раздел «Демо CLI: команда /debug»)\n"
+        "  /debug new      сброс debug_history и last_debug_suggested_code\n"
+        "  /quit           exit\n"
     )
 
 
@@ -90,21 +70,94 @@ def _read_multiline_feedback() -> str | None:
     return "\n".join(lines)
 
 
-def _append_debug_buffer(
-    buf: deque[dict[str, Any]],
+def _read_lua_for_debug(
     *,
-    kind: str,
-    label: str,
-    data: dict[str, Any],
-    request_debug: bool,
-) -> None:
-    if not request_debug:
+    last_debug_suggested: str | None,
+    last_assistant_code: str | None,
+) -> str | None:
+    print("Lua >")
+    first = input()
+    if first == "":
+        if last_debug_suggested and last_debug_suggested.strip():
+            return last_debug_suggested.strip()
+        if last_assistant_code and last_assistant_code.strip():
+            return last_assistant_code.strip()
+        print("Нечего подставить — отмена.", file=sys.stderr)
+        return None
+    lines = [first]
+    while True:
+        line = input()
+        if line == "":
+            break
+        lines.append(line)
+    return "\n".join(lines)
+
+
+def _read_optional_problem_note() -> str | None:
+    print("Вопрос (пустая строка — пропуск):")
+    first = input()
+    if not first.strip():
+        return None
+    out: list[str] = [first]
+    while True:
+        line = input()
+        if line == "":
+            break
+        out.append(line)
+    return "\n".join(out)
+
+
+def _merge_context_into_prompt(prompt: str, context: dict[str, Any] | None) -> str:
+    if not context:
+        return prompt
+    return (
+        f"{prompt}\n\nContext:\n"
+        f"{json.dumps(context, ensure_ascii=False, indent=2)}"
+    )
+
+
+def _final_checks_from_response(data: dict[str, Any]) -> list[dict[str, Any]]:
+    attempts = data.get("attempts") or []
+    if not attempts:
+        return []
+    last = attempts[-1]
+    return last.get("checks") or []
+
+
+def _print_response_summary(data: dict[str, Any], *, verbose: bool) -> None:
+    if verbose:
+        print(json.dumps(data, indent=2, ensure_ascii=False))
         return
-    entry: dict[str, Any] = {"kind": kind, "label": label}
-    if "debug" in data and data["debug"] is not None:
-        entry["debug"] = data["debug"]
-    else:
-        entry["note"] = "response had no debug field (server image may be older than client)"
+    rk = data.get("response_kind")
+    if rk == "clarification":
+        print("--- clarification ---")
+        print(data.get("clarification_question") or "")
+        return
+    code = data.get("code") or ""
+    print("--- code ---")
+    print(code)
+    print("--- end ---")
+    if rk == "code":
+        if not data.get("all_checks_passed", True):
+            print(
+                "Warning: not all static checks passed.",
+                file=sys.stderr,
+            )
+            failed = [
+                c
+                for c in (_final_checks_from_response(data) or [])
+                if not c.get("passed", True)
+            ]
+            for c in failed:
+                print(
+                    f"  [{c.get('stage')}] {c.get('message', '')}",
+                    file=sys.stderr,
+                )
+        if data.get("degraded"):
+            print("Warning: degraded=true (repairs exhausted with remaining issues).", file=sys.stderr)
+
+
+def _append_log(buf: deque[dict[str, Any]], entry: dict[str, Any]) -> None:
     buf.append(entry)
 
 
@@ -123,14 +176,9 @@ def main() -> int:
         help="Load JSON context from file (same as LOCALSCRIPT_CLI_DEFAULT_CONTEXT_FILE)",
     )
     parser.add_argument(
-        "--no-server-debug",
+        "--verbose",
         action="store_true",
-        help="Do not send debug:true by default (use /debug on later)",
-    )
-    parser.add_argument(
-        "--attach-previous-code",
-        action="store_true",
-        help="Start with attach on: each /generate sends last code as previous_code when available",
+        help="Start with verbose on (full JSON after each request)",
     )
     args = parser.parse_args()
 
@@ -141,16 +189,13 @@ def main() -> int:
         settings = settings.model_copy(update={"http_timeout_s": args.timeout})
     if args.context_file:
         settings = settings.model_copy(update={"default_context_file": args.context_file})
-    if args.no_server_debug:
-        settings = settings.model_copy(update={"request_server_debug": False})
-    if args.attach_previous_code:
-        settings = settings.model_copy(update={"attach_previous_code": True})
+    if args.verbose:
+        settings = settings.model_copy(update={"verbose": True})
 
     base_url = settings.base_url.rstrip("/")
     timeout = httpx.Timeout(settings.http_timeout_s)
-    request_debug: bool = settings.request_server_debug
-    attach_previous_code: bool = settings.attach_previous_code
-    debug_buffer: deque[dict[str, Any]] = deque(maxlen=DEBUG_BUFFER_MAX)
+    verbose: bool = settings.verbose
+    response_log: deque[dict[str, Any]] = deque(maxlen=RESPONSE_LOG_BUFFER_MAX)
 
     context: dict[str, Any] | None = None
     if settings.default_context_file:
@@ -162,8 +207,12 @@ def main() -> int:
 
     last_code: str | None = None
     last_prompt: str | None = None
-    session_history: list[dict[str, Any]] = []
-    pending_refine_all_chain: bool = False
+    last_checks: list[dict[str, Any]] | None = None
+    refinement_chain: list[dict[str, Any]] = []
+    clarification_history: list[dict[str, str]] = []
+    debug_history: list[dict[str, Any]] = []
+    # Last POST /debug suggested_code — подставляется при пустом вводе Lua и в /debug <prompt>
+    last_debug_suggested_code: str | None = None
 
     _banner(base_url)
 
@@ -203,13 +252,8 @@ def main() -> int:
                             "http_timeout_s": settings.http_timeout_s,
                             "default_context_file": settings.default_context_file,
                             "active_context": context is not None,
-                            "request_server_debug": request_debug,
-                            "debug_buffer_len": len(debug_buffer),
-                            "attach_previous_code": attach_previous_code,
-                            "has_last_code": last_code is not None,
-                            "pending_refine_all_chain": pending_refine_all_chain,
-                            "session_history_steps": len(session_history),
-                            "refine_steps": _refine_count(session_history),
+                            "verbose": verbose,
+                            "response_log_entries": len(response_log),
                         },
                         indent=2,
                         ensure_ascii=False,
@@ -244,150 +288,166 @@ def main() -> int:
                         print(f"Error: {e}", file=sys.stderr)
                 continue
 
-            if raw == "/debug":
-                if not debug_buffer:
-                    print("(debug buffer empty)")
+            if raw == "/verbose on":
+                verbose = True
+                print("verbose=true")
+                continue
+            if raw == "/verbose off":
+                verbose = False
+                print("verbose=false")
+                continue
+            if raw == "/verbose status":
+                print(f"verbose={verbose!r}")
+                continue
+
+            if raw == "/log" or raw == "/log 1":
+                if not response_log:
+                    print("(log empty)")
                 else:
-                    print(json.dumps(debug_buffer[-1], indent=2, ensure_ascii=False))
+                    print(json.dumps(response_log[-1], indent=2, ensure_ascii=False))
                 continue
 
-            if raw == "/debug all":
-                if not debug_buffer:
-                    print("(debug buffer empty)")
+            if raw == "/log all":
+                if not response_log:
+                    print("(log empty)")
                 else:
-                    print(json.dumps(list(debug_buffer), indent=2, ensure_ascii=False))
+                    print(json.dumps(list(response_log), indent=2, ensure_ascii=False))
                 continue
 
-            if raw == "/debug clear":
-                debug_buffer.clear()
-                print("Debug buffer cleared.")
+            if raw == "/log clear":
+                response_log.clear()
+                print("Log cleared.")
                 continue
 
-            if raw == "/debug on":
-                request_debug = True
-                print("Will send debug:true on generate/refine (buffer fills on each reply).")
-                continue
-
-            if raw == "/debug off":
-                request_debug = False
-                print("Will not send debug:true (buffer only gets notes on next calls).")
-                continue
-
-            if raw == "/debug status":
-                print(
-                    f"request_server_debug={request_debug!r}  buffer_entries={len(debug_buffer)}"
-                )
-                continue
-
-            if raw.startswith("/debug ") and len(raw) > 7:
-                rest = raw[7:].strip()
+            if raw.startswith("/log ") and len(raw) > 5:
+                rest = raw[5:].strip()
                 if rest.isdigit():
                     n = int(rest)
                     if n < 1:
-                        print("Use positive n for /debug N.", file=sys.stderr)
+                        print("Use positive n for /log N.", file=sys.stderr)
                         continue
-                    if not debug_buffer:
-                        print("(debug buffer empty)")
+                    if not response_log:
+                        print("(log empty)")
                         continue
-                    buf_list = list(debug_buffer)
+                    buf_list = list(response_log)
                     tail = buf_list[-min(n, len(buf_list)) :]
                     print(json.dumps(tail, indent=2, ensure_ascii=False))
                     continue
 
-            if raw.startswith("/debug"):
-                print("Unknown /debug subcommand. See /help.", file=sys.stderr)
+            if raw == "/debug new":
+                debug_history.clear()
+                last_debug_suggested_code = None
+                print("debug_history and last debug suggestion cleared.")
                 continue
 
-            if raw == "/attach on":
-                attach_previous_code = True
-                print("Attach on: next /generate will include previous_code when last code exists.")
-                continue
-
-            if raw == "/attach off":
-                attach_previous_code = False
-                print("Attach off: /generate sends only your prompt (no automatic previous_code).")
-                continue
-
-            if raw == "/attach status":
-                print(
-                    f"attach_previous_code={attach_previous_code!r}  "
-                    f"last_code={'yes' if last_code else 'no'}"
-                )
-                continue
-
-            if raw.startswith("/attach"):
-                print("Use /attach on, /attach off, or /attach status.", file=sys.stderr)
-                continue
-
-            if raw == "/refine all":
-                if _refine_count(session_history) < 1:
-                    print(
-                        "Неверная команда: нет истории /refine. "
-                        "Сначала выполните обычный /refine с правками.",
-                        file=sys.stderr,
+            if raw == "/debug" or raw.startswith("/debug "):
+                note: str | None
+                code_for_debug: str | None
+                if raw == "/debug":
+                    code_for_debug = _read_lua_for_debug(
+                        last_debug_suggested=last_debug_suggested_code,
+                        last_assistant_code=last_code,
                     )
-                    continue
-                pending_refine_all_chain = True
-                print(
-                    "Включено: при следующем /refine в context попадёт refine_all_history "
-                    f"({len(session_history)} шагов, последние {REFINE_ALL_HISTORY_MAX_STEPS} "
-                    "если длиннее)."
-                )
+                    if code_for_debug is None:
+                        continue
+                    note = _read_optional_problem_note()
+                else:
+                    rest = raw[6:].strip()
+                    if not rest:
+                        print("Use /debug alone for interactive input, or /debug <text> with a prompt.", file=sys.stderr)
+                        continue
+                    if last_debug_suggested_code and last_debug_suggested_code.strip():
+                        code_for_debug = last_debug_suggested_code.strip()
+                    elif last_code and last_code.strip():
+                        code_for_debug = last_code.strip()
+                    else:
+                        print(
+                            "No code to reuse for shortcut. Run /generate or /debug with pasted Lua first.",
+                            file=sys.stderr,
+                        )
+                        continue
+                    note = rest
+                body: dict[str, Any] = {
+                    "code": code_for_debug,
+                    "debug_history": debug_history,
+                }
+                if note:
+                    body["prompt"] = note
+                try:
+                    r = client.post(f"{base_url}/debug", json=body)
+                    r.raise_for_status()
+                    data = r.json()
+                    _append_log(response_log, {"kind": "debug", "response": data})
+                    if verbose:
+                        print(json.dumps(data, indent=2, ensure_ascii=False))
+                    else:
+                        print("--- problem_description ---")
+                        print(data.get("problem_description", ""))
+                        print("--- suggested_code ---")
+                        print(data.get("suggested_code", ""))
+                        print("--- end ---")
+                    sug_raw = (data.get("suggested_code") or "").strip()
+                    sug_store = sug_raw if sug_raw else (code_for_debug or "").strip()
+                    turn = {
+                        "user_code": code_for_debug,
+                        "user_prompt": note,
+                        "checks": data.get("checks", []),
+                        "problem_description": data.get("problem_description", ""),
+                        "suggested_code": sug_store,
+                    }
+                    debug_history.append(turn)
+                    if sug_raw:
+                        last_debug_suggested_code = sug_raw
+                    elif last_debug_suggested_code:
+                        pass
+                    else:
+                        last_debug_suggested_code = sug_store or None
+                except httpx.HTTPError as e:
+                    print(f"Error: {e}", file=sys.stderr)
+                    if isinstance(e, httpx.HTTPStatusError) and e.response is not None:
+                        print(e.response.text[:2000], file=sys.stderr)
                 continue
 
             if raw == "/refine":
-                if not last_code or not last_prompt:
-                    print("Nothing to refine yet — run a normal prompt first.", file=sys.stderr)
+                if not last_code or not last_prompt or last_checks is None:
+                    print(
+                        "Nothing to refine yet — run a successful code generate first.",
+                        file=sys.stderr,
+                    )
                     continue
                 fb = _read_multiline_feedback()
                 if fb is None:
                     print("Cancelled.")
                     continue
-                use_chain = pending_refine_all_chain
-                if use_chain:
-                    ctx_body = _merge_refine_context(context, session_history)
-                    print(
-                        f"[refine all] refine_all_history: "
-                        f"{len(ctx_body.get('refine_all_history', []))} шагов",
-                        file=sys.stderr,
-                    )
-                else:
-                    ctx_body = context
-
+                code_before = last_code
+                checks_before = last_checks
+                hist = refinement_chain + [
+                    {
+                        "assistant_code": code_before,
+                        "user_feedback": fb,
+                        "checks": checks_before,
+                    }
+                ]
                 body = {
                     "prompt": last_prompt,
-                    "previous_code": last_code,
-                    "feedback": fb,
-                    "context": ctx_body,
+                    "refinement_history": hist,
                 }
-                if request_debug:
-                    body["debug"] = True
                 try:
                     r = client.post(f"{base_url}/refine", json=body)
                     r.raise_for_status()
                     data = r.json()
-                    code = data.get("code", "")
-                    print("--- code ---")
-                    print(code)
-                    print("--- end ---")
-                    _append_debug_buffer(
-                        debug_buffer,
-                        kind="refine",
-                        label=last_prompt[:80],
-                        data=data,
-                        request_debug=request_debug,
-                    )
-                    last_code = code
-                    session_history.append(
+                    _append_log(response_log, {"kind": "refine", "response": data})
+                    _print_response_summary(data, verbose=verbose)
+                    refinement_chain.append(
                         {
-                            "type": "refine",
-                            "prompt": last_prompt,
-                            "feedback": fb,
-                            "code": code,
+                            "assistant_code": code_before,
+                            "user_feedback": fb,
+                            "checks": checks_before,
                         }
                     )
-                    if use_chain:
-                        pending_refine_all_chain = False
+                    last_code = data.get("code") or ""
+                    last_checks = _final_checks_from_response(data)
+                    last_debug_suggested_code = None
                 except httpx.HTTPError as e:
                     print(f"Error: {e}", file=sys.stderr)
                     if isinstance(e, httpx.HTTPStatusError) and e.response is not None:
@@ -398,40 +458,45 @@ def main() -> int:
                 print("Unknown command. Type /help", file=sys.stderr)
                 continue
 
-            prompt = raw
-            body: dict[str, Any] = {"prompt": prompt, "context": context}
-            if attach_previous_code and last_code is not None:
-                body["previous_code"] = last_code
-                print("[attach] previous_code sent", file=sys.stderr)
-            elif attach_previous_code:
-                print("[attach] no last code yet, plain generate", file=sys.stderr)
-            if request_debug:
-                body["debug"] = True
+            prompt = _merge_context_into_prompt(raw, context)
+            body: dict[str, Any] = {
+                "prompt": prompt,
+                "clarification_history": clarification_history,
+            }
             try:
-                r = client.post(f"{base_url}/generate", json=body)
-                r.raise_for_status()
-                data = r.json()
-                code = data.get("code", "")
-                print("--- code ---")
-                print(code)
-                print("--- end ---")
-                _append_debug_buffer(
-                    debug_buffer,
-                    kind="generate",
-                    label=prompt[:120],
-                    data=data,
-                    request_debug=request_debug,
-                )
-                last_code = code
-                last_prompt = prompt
-                session_history = [
-                    {
-                        "type": "generate",
-                        "prompt": prompt,
-                        "code": code,
-                    }
-                ]
-                pending_refine_all_chain = False
+                while True:
+                    r = client.post(f"{base_url}/generate", json=body)
+                    r.raise_for_status()
+                    data = r.json()
+                    _append_log(response_log, {"kind": "generate", "response": data})
+                    rk = data.get("response_kind")
+                    if rk == "clarification":
+                        q = data.get("clarification_question") or ""
+                        _print_response_summary(data, verbose=verbose)
+                        if not verbose:
+                            print("--- clarification ---")
+                            print(q)
+                        ans = input("Your answer (empty to skip): ").strip()
+                        if not ans:
+                            break
+                        clarification_history.append(
+                            {"model_question": q, "user_answer": ans}
+                        )
+                        body = {
+                            "prompt": prompt,
+                            "clarification_history": clarification_history,
+                        }
+                        continue
+
+                    _print_response_summary(data, verbose=verbose)
+                    last_code = data.get("code") or ""
+                    last_prompt = prompt
+                    last_checks = _final_checks_from_response(data)
+                    refinement_chain = []
+                    clarification_history = []
+                    debug_history.clear()
+                    last_debug_suggested_code = None
+                    break
             except httpx.HTTPError as e:
                 print(f"Error: {e}", file=sys.stderr)
                 if isinstance(e, httpx.HTTPStatusError) and e.response is not None:

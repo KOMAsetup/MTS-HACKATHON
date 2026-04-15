@@ -1,28 +1,60 @@
-from app.models_io import GenerateDebugMeta, GenerateRequest, GenerateResponse
+from app.models_io import (
+    CheckItem,
+    GenerateRequest,
+    GenerateResponse,
+    RefinementStep,
+    ResponseKind,
+    StopReason,
+)
 
 
-def test_generate_request_debug_default_false():
+def test_generate_request_no_legacy_debug_field():
     r = GenerateRequest(prompt="x")
-    assert r.debug is False
+    d = r.model_dump()
+    assert "debug" not in d
+    assert "context" not in d
 
 
-def test_generate_response_exclude_none_omits_debug():
-    r = GenerateResponse(code="return 1")
-    d = r.model_dump(exclude_none=True)
-    assert d == {"code": "return 1"}
-    r2 = GenerateResponse(
+def test_generate_response_code_branch_dump():
+    r = GenerateResponse(
+        response_kind=ResponseKind.code,
         code="return 1",
-        debug=GenerateDebugMeta(
-            first_validation_ok=True,
-            final_validation_ok=True,
-            llm_rounds=1,
-            repair_rounds_used=0,
-            max_repair_attempts=2,
-            degraded=False,
-            log=["validate: pass (initial)"],
-        ),
+        attempts=[],
+        all_checks_passed=True,
+        degraded=False,
+        stop_reason=StopReason.validation_ok,
+        llm_rounds=1,
+        repair_rounds_used=0,
     )
-    d2 = r2.model_dump(exclude_none=True)
-    assert "debug" in d2
-    assert d2["debug"]["llm_rounds"] == 1
-    assert d2["debug"]["degraded"] is False
+    d = r.model_dump(exclude_none=True)
+    assert d["response_kind"] == "code"
+    assert d["code"] == "return 1"
+    assert "clarification_question" not in d
+
+
+def test_generate_response_clarification_branch():
+    r = GenerateResponse(
+        response_kind=ResponseKind.clarification,
+        clarification_question="Which format?",
+        attempts=[],
+        llm_rounds=1,
+        repair_rounds_used=0,
+    )
+    d = r.model_dump(exclude_none=True)
+    assert d["response_kind"] == "clarification"
+    assert d["clarification_question"] == "Which format?"
+    assert "code" not in d
+
+
+def test_refinement_step_requires_checks_list():
+    RefinementStep(
+        assistant_code="return 1",
+        user_feedback="ok",
+        checks=[],
+    )
+    step = RefinementStep(
+        assistant_code="return 1",
+        user_feedback="ok",
+        checks=[CheckItem(id="syntax_0", stage="syntax", passed=True, message="")],
+    )
+    assert len(step.checks) == 1

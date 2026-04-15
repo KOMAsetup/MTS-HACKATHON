@@ -17,7 +17,8 @@ if str(ROOT) not in sys.path:
 import httpx
 
 from app.config import Settings
-from app.pipeline import generate_lua
+from app.models_io import GenerateRequest, ResponseKind
+from app.pipeline import run_generate_pipeline
 from app.sandbox import run_lua_with_wf
 from app.validate import luac_check, static_guard_violations
 
@@ -26,6 +27,18 @@ def load_tasks(path: Path | None = None) -> list[dict]:
     p = path or (ROOT / "benchmarks" / "public_tasks.json")
     with open(p, encoding="utf-8") as f:
         return json.load(f)
+
+
+def merge_prompt_with_benchmark(task: dict) -> str:
+    """Benchmark `context` is embedded in the prompt only (not a separate API field)."""
+    prompt = task["prompt"]
+    ctx = task.get("context")
+    if ctx is None:
+        return prompt
+    return (
+        f"{prompt}\n\nContext:\n"
+        f"{json.dumps(ctx, ensure_ascii=False, indent=2)}"
+    )
 
 
 def heuristic_pass(code: str, expected_contains: list[str]) -> bool:
@@ -38,15 +51,14 @@ async def run_one_direct(
     task: dict,
 ) -> dict:
     t0 = time.perf_counter()
-    code, log, _dbg = await generate_lua(
-        client,
-        settings,
-        task["prompt"],
-        context=task.get("context"),
-        return_debug=False,
-    )
+    eval_settings = settings.model_copy(update={"clarification_mode": False})
+    req = GenerateRequest(prompt=merge_prompt_with_benchmark(task))
+    resp = await run_generate_pipeline(client, eval_settings, req)
     dt = time.perf_counter() - t0
-    return {"code": code, "log": log, "latency_s": dt}
+    if resp.response_kind != ResponseKind.code:
+        raise RuntimeError(f"expected code response, got {resp.response_kind!r}")
+    code = resp.code or ""
+    return {"code": code, "latency_s": dt}
 
 
 def score_task(task: dict, code: str) -> dict:
@@ -100,13 +112,15 @@ async def main_async(args: argparse.Namespace) -> int:
             for t in tasks:
                 try:
                     t0 = time.perf_counter()
-                    payload = {"prompt": t["prompt"]}
-                    if t.get("context") is not None:
-                        payload["context"] = t["context"]
+                    payload = {"prompt": merge_prompt_with_benchmark(t)}
                     r = await hc.post("/generate", json=payload)
                     r.raise_for_status()
                     data = r.json()
-                    code = data.get("code", "")
+                    if data.get("response_kind") != "code":
+                        raise RuntimeError(
+                            f"expected response_kind code, got {data.get('response_kind')!r}"
+                        )
+                    code = data.get("code") or ""
                     dt = time.perf_counter() - t0
                     sc = score_task(t, code)
                     results.append(
@@ -149,7 +163,7 @@ async def main_async(args: argparse.Namespace) -> int:
     return 0 if passed == len(tasks) else 1
 
 
-def main() -> None:
+def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument(
         "--http",
