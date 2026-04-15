@@ -1,45 +1,316 @@
 openapi: 3.0.3
 info:
   title: LocalScript API
-  description: 
+  description: Stateless Lua generation for LowCode (FastAPI + Ollama).
   version: 1.0.0
 
 servers:
   - url: http://localhost:8080
 
 paths:
-  /generate:
-    post:
-      summary: Сгенерировать код по тексту задачи
-      operationId: generate
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [prompt]
-              properties:
-                prompt:
-                  type: string
-                  description: Текст задачи на естественном языке
-            example:
-              prompt: "Функция factorial(n) для n >= 0"
+  /health:
+    get:
+      summary: Health check
+      operationId: health
       responses:
         "200":
           description: OK
           content:
             application/json:
               schema:
-                type: object
-                required: [code]
-                properties:
-                  code:
-                    type: string
-                    description: Сгенерированный Lua-код
-              example:
-                code: |
-                  function factorial(n)
-                    if n <= 1 then return 1 end
-                    return n * factorial(n - 1)
-                  end
+                $ref: "#/components/schemas/HealthResponse"
+
+  /generate:
+    post:
+      summary: Generate Lua (new task); optional clarification loop before code
+      operationId: generate
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/GenerateRequest"
+      responses:
+        "200":
+          description: OK — clarification question or final code branch
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GenerateResponse"
+        "422":
+          description: Validation error (e.g. invalid body)
+        "502":
+          description: Upstream or parse failure
+
+  /refine:
+    post:
+      summary: Refine code with full refinement_history (stateless chain)
+      operationId: refine
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RefineRequest"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/GenerateResponse"
+        "422":
+          description: Validation error (e.g. empty refinement_history)
+        "502":
+          description: Upstream or parse failure
+
+  /debug:
+    post:
+      summary: Static checks + one LLM review round (user-supplied code)
+      description: |
+        Stateless step: the client sends the current Lua in **code** (required), optional **prompt**,
+        and optional **debug_history** (full list of prior normalized rounds).
+
+        Server runs **run_all_checks** on **code**, returns **checks** and **all_checks_passed**,
+        then a single LLM call with a review-specific system prompt (not the generate prompt).
+        Response includes **problem_description** and **suggested_code** for the user to inspect.
+
+        For multi-turn review, the client appends each round to **debug_history** and sends the
+        accumulated array on the next request; the server does not store sessions.
+
+        Implicit reuse of a previous model suggestion instead of **code** is **not** part of this
+        HTTP contract — that is a demo CLI convenience only (documented in localscript-agent README).
+
+        When **debug_history** is sent, the server expands each stored round into the LLM user
+        message: prior **user_code**, a **compact** checks line (**all_checks_passed** plus only
+        **failed** checks, not the full list), **user_prompt**, **problem_description**, and
+        **suggested_code** (see `build_debug_user_message`). JSON request/response still carry full
+        **checks** arrays where defined by the schema.
+      operationId: debug
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DebugRequest"
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DebugResponse"
+        "422":
+          description: Validation error
+        "502":
+          description: Parse or upstream failure
+
+components:
+  schemas:
+    HealthResponse:
+      type: object
+      required: [status, ollama_reachable, model]
+      properties:
+        status:
+          type: string
+        ollama_reachable:
+          type: boolean
+        model:
+          type: string
+
+    ClarificationTurn:
+      type: object
+      required: [model_question, user_answer]
+      properties:
+        model_question:
+          type: string
+        user_answer:
+          type: string
+
+    GenerateRequest:
+      type: object
+      required: [prompt]
+      properties:
+        prompt:
+          type: string
+          minLength: 1
+        max_repair_attempts:
+          type: integer
+          minimum: 0
+          nullable: true
+          description: Override repair rounds; capped server-side
+        clarification_history:
+          type: array
+          items:
+            $ref: "#/components/schemas/ClarificationTurn"
+          default: []
+
+    RefinementStep:
+      type: object
+      required: [assistant_code, user_feedback, checks]
+      properties:
+        assistant_code:
+          type: string
+          minLength: 1
+        user_feedback:
+          type: string
+          minLength: 1
+        checks:
+          type: array
+          items:
+            $ref: "#/components/schemas/CheckItem"
+
+    RefineRequest:
+      type: object
+      required: [prompt, refinement_history]
+      properties:
+        prompt:
+          type: string
+          minLength: 1
+          description: Original task wording (same as first generate)
+        refinement_history:
+          type: array
+          minItems: 1
+          items:
+            $ref: "#/components/schemas/RefinementStep"
+        max_repair_attempts:
+          type: integer
+          minimum: 0
+          nullable: true
+
+    CheckItem:
+      type: object
+      required: [id, stage, passed]
+      properties:
+        id:
+          type: string
+        stage:
+          type: string
+        passed:
+          type: boolean
+        message:
+          type: string
+          default: ""
+
+    AttemptRecord:
+      type: object
+      required: [index, kind, code, checks]
+      properties:
+        index:
+          type: integer
+          minimum: 0
+        kind:
+          type: string
+          description: initial or repair
+        code:
+          type: string
+        checks:
+          type: array
+          items:
+            $ref: "#/components/schemas/CheckItem"
+
+    ResponseKind:
+      type: string
+      enum: [clarification, code]
+
+    StopReason:
+      type: string
+      enum: [validation_ok, max_repairs_exhausted, error]
+
+    GenerateResponse:
+      type: object
+      required: [response_kind]
+      properties:
+        response_kind:
+          $ref: "#/components/schemas/ResponseKind"
+        clarification_question:
+          type: string
+          nullable: true
+        code:
+          type: string
+          nullable: true
+        attempts:
+          type: array
+          items:
+            $ref: "#/components/schemas/AttemptRecord"
+        all_checks_passed:
+          type: boolean
+          nullable: true
+        degraded:
+          type: boolean
+          nullable: true
+        stop_reason:
+          $ref: "#/components/schemas/StopReason"
+          nullable: true
+        llm_rounds:
+          type: integer
+          nullable: true
+        repair_rounds_used:
+          type: integer
+          nullable: true
+        parse_warning:
+          type: string
+          nullable: true
+          description: Present if JSON parse failed and extract_lua fallback was used
+
+    DebugHistoryTurn:
+      type: object
+      required: [user_code, checks, problem_description, suggested_code]
+      properties:
+        user_code:
+          type: string
+        user_prompt:
+          type: string
+          nullable: true
+        checks:
+          type: array
+          items:
+            $ref: "#/components/schemas/CheckItem"
+        problem_description:
+          type: string
+        suggested_code:
+          type: string
+
+    DebugRequest:
+      type: object
+      required: [code]
+      description: >
+        Lua under **code** is validated as-is. **debug_history** carries prior rounds
+        (user_code, user_prompt, checks, problem_description, suggested_code) so the model
+        can see context; first call uses an empty list or omits the field.
+      properties:
+        code:
+          type: string
+          minLength: 1
+          description: Lua snippet to analyze (must be non-empty in JSON).
+        prompt:
+          type: string
+          nullable: true
+          description: Optional user question or note for the reviewer.
+        debug_history:
+          type: array
+          items:
+            $ref: "#/components/schemas/DebugHistoryTurn"
+          default: []
+          description: Prior rounds in chronological order; server does not persist between requests.
+
+    DebugResponse:
+      type: object
+      required: [checks, all_checks_passed, problem_description, suggested_code]
+      properties:
+        checks:
+          type: array
+          items:
+            $ref: "#/components/schemas/CheckItem"
+          description: Snapshot of static checks for the request **code** (not for suggested_code).
+        all_checks_passed:
+          type: boolean
+        problem_description:
+          type: string
+          description: Short analysis referencing checks and the snippet.
+        suggested_code:
+          type: string
+          description: >
+            Model draft rewrite; may still fail checks. Clients may send it back as **code**
+            on a later POST /debug or use it only in UI; demo CLI may reuse it as implicit **code**
+            (see README), which is outside this schema.
