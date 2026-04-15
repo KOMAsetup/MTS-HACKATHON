@@ -44,6 +44,7 @@ def semantic_validate(
 
 
 def _extract_semantic_spec(context: dict | None, *, context_key: str) -> dict[str, Any] | None:
+    """Read semantic validation config from request context by key."""
     if not isinstance(context, dict):
         return None
     spec = context.get(context_key)
@@ -51,6 +52,7 @@ def _extract_semantic_spec(context: dict | None, *, context_key: str) -> dict[st
 
 
 def _extract_wf_root(context: dict | None) -> dict:
+    """Normalize context root so sandbox always receives wf-like table."""
     if not isinstance(context, dict):
         return {}
     wf = context.get("wf")
@@ -62,6 +64,7 @@ def _extract_wf_root(context: dict | None) -> dict:
 def evaluate_semantic_rules(
     stdout: str, result_obj: object | None, spec: dict[str, Any]
 ) -> list[str]:
+    """Evaluate semantic rule set against stdout and parsed Lua return value."""
     errors: list[str] = []
     actual = (stdout or "").strip()
 
@@ -117,6 +120,7 @@ def evaluate_semantic_rules(
 
 
 def _check_expected_type(expected: str, value: object | None, errors: list[str]) -> None:
+    """Validate result type against API-level semantic expectation."""
     actual_map = {
         list: "array",
         dict: "object",
@@ -131,6 +135,7 @@ def _check_expected_type(expected: str, value: object | None, errors: list[str])
 
 
 def _check_expected_len(rule: object, value: object | None, errors: list[str]) -> None:
+    """Validate size constraints for list/dict/string results."""
     if not isinstance(value, (list, dict, str)):
         errors.append("expected_len_type_error: result is not sized (need array/object/string)")
         return
@@ -154,6 +159,7 @@ def _check_expected_len(rule: object, value: object | None, errors: list[str]) -
 
 
 def _check_required_keys(required_keys: list, value: object | None, errors: list[str]) -> None:
+    """Validate required object keys for dict results or each list item."""
     keys = [k for k in required_keys if isinstance(k, str)]
     if not keys:
         return
@@ -175,6 +181,7 @@ def _check_required_keys(required_keys: list, value: object | None, errors: list
 
 
 def _check_all_items_predicate(predicate: str, value: object | None, errors: list[str]) -> None:
+    """Apply predicate rule to each element of an array result."""
     if not isinstance(value, list):
         errors.append("all_items_predicate_type_error: result is not array")
         return
@@ -196,6 +203,7 @@ def _check_all_items_predicate(predicate: str, value: object | None, errors: lis
 
 
 def _check_numeric_range(rule: object, value: object | None, errors: list[str]) -> None:
+    """Validate numeric result value or nested numeric field range."""
     if isinstance(rule, (int, float)):
         # shorthand: exact numeric value
         if not isinstance(value, (int, float)):
@@ -225,6 +233,7 @@ def _check_numeric_range(rule: object, value: object | None, errors: list[str]) 
 
 
 def _parse_predicate(predicate: str) -> tuple[str, str, object] | None:
+    """Parse simple predicates like 'age >= 18' into comparable parts."""
     m = re.match(r"^\s*([A-Za-z_][A-Za-z0-9_]*)\s*(==|!=|>=|<=|>|<)\s*(.+?)\s*$", predicate)
     if not m:
         return None
@@ -234,6 +243,7 @@ def _parse_predicate(predicate: str) -> tuple[str, str, object] | None:
 
 
 def _parse_literal(raw: str) -> object:
+    """Parse predicate literal into bool/number/null/string Python value."""
     lower = raw.lower()
     if lower == "nil" or lower == "null":
         return None
@@ -254,6 +264,7 @@ def _parse_literal(raw: str) -> object:
 
 
 def _compare(lhs: object, op: str, rhs: object) -> bool:
+    """Compare parsed predicate operands with strict numeric guards."""
     if op == "==":
         return lhs == rhs
     if op == "!=":
@@ -272,6 +283,7 @@ def _compare(lhs: object, op: str, rhs: object) -> bool:
 
 
 def _get_by_dot_path(value: object, path: str) -> object | None:
+    """Read nested value by dot path with optional list indexes."""
     cur: object = value
     for part in path.split("."):
         if isinstance(cur, dict):

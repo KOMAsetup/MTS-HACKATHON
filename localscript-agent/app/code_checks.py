@@ -16,6 +16,7 @@ logger = logging.getLogger(__name__)
 
 
 class CheckStage(str, Enum):
+    """Validation stage identifiers exposed to API clients."""
     static = "static"
     syntax = "syntax"
     linter = "linter"
@@ -24,12 +25,14 @@ class CheckStage(str, Enum):
 
 @dataclass(frozen=True)
 class Violation:
+    """Single failed validation item with stage and human-readable message."""
     stage: CheckStage
     message: str
 
 
 @dataclass(frozen=True)
 class CheckResult:
+    """Aggregate validation result for one Lua snippet."""
     ok: bool
     violations: tuple[Violation, ...]
 
@@ -38,6 +41,7 @@ class CheckResult:
 
 
 def _run_optional_linter(code: str, settings: Settings) -> list[Violation]:
+    """Run external Lua linter when enabled and available in PATH."""
     if not settings.validation_linter:
         return []
     exe = settings.linter_path
@@ -117,6 +121,7 @@ def _semantic_validation_enabled_for_request(
     context: dict | None,
     context_key: str,
 ) -> bool:
+    """Enable semantic checks globally or when request context provides spec."""
     if settings_enabled:
         return True
     if not isinstance(context, dict):
@@ -145,6 +150,7 @@ def log_check_outcome(
     violations: tuple[Violation, ...],
     repair_attempt: int | None,
 ) -> None:
+    """Emit structured check outcome logs for observability."""
     stages = sorted({v.stage.value for v in violations})
     logger.info(
         "lua_check outcome=%s stages=%s repair_attempt=%s",

@@ -1,19 +1,23 @@
-# Архитектура (черновик для C4)
+# Архитектура LocalScript
 
-## Контекст (C4 Level 1)
+Сервис **stateless**: клиент (в т.ч. [Streamlit GUI](../scripts/demo_streamlit.py) или `curl`) передаёт историю в теле каждого запроса. Backend — **FastAPI**; инференс только у локального **Ollama**; в runtime **нет** внешних LLM API.
 
-Пользователь или интеграционный контур обращается к HTTP API **LocalScript** в закрытой сети. Сервис вызывает локальный **Ollama** на GPU; внешние LLM API не используются.
+## C4 (визуализация для сдачи)
 
-## Контейнеры (C4 Level 2)
+1. **Текст для платформы + места под рисунки:** [`../../docs/c4/C4_SUBMISSION.md`](../../docs/c4/C4_SUBMISSION.md)  
+2. Техническое описание и таблицы: [`../../docs/c4/C4_OVERVIEW.md`](../../docs/c4/C4_OVERVIEW.md)  
+3. Исходники PlantUML и рендер: [`../../docs/c4/README.md`](../../docs/c4/README.md), скрипт [`../../scripts/render_c4.sh`](../../scripts/render_c4.sh) из корня репозитория `mts`
 
-- **App** (Python, FastAPI): приём `POST /generate`, сборка промпта, вызов Ollama, извлечение Lua, валидация (`luac`, статические правила), цикл repair.
-- **Ollama**: инференс GGUF-модели на GPU, параметры `num_ctx=4096`, `num_predict=256`.
+## Компоненты кода (сводка)
 
-## Компоненты App
+| Область | Модули |
+|---------|--------|
+| HTTP | `app/main.py` |
+| Пайплайн | `app/pipeline.py` |
+| Ollama | `app/ollama_client.py` |
+| Промпты / разбор | `app/prompts.py`, `app/generate_parse.py`, `app/extract.py` |
+| Проверки | `app/validate.py`, `app/code_checks.py`, `app/semantic.py`, при необходимости `app/sandbox.py` |
+| GUI (клиент API) | `scripts/demo_streamlit.py` |
+| CLI (клиент API) | `scripts/demo_cli.py` |
 
-- `pipeline.generate_lua` — оркестрация.
-- `ollama_client` — HTTP `/api/chat`.
-- `validate` — `luac -p` + запрет `require`/`io`/`os`.
-- `sandbox` — опциональный прогон с mock `wf` (eval).
-
-Перенесите блоки в официальный C4-шаблон организаторов (диаграмма + краткие подписи).
+Развёртывание по умолчанию: **`docker-compose.yml`** в этом каталоге (`app` + `ollama`). Streamlit обычно запускается **на хосте** отдельной командой (см. README подпроекта).

@@ -9,6 +9,7 @@ RESULT_JSON_MARKER = "__RESULT_JSON__"
 
 
 def _lua_literal(obj: object) -> str:
+    """Convert Python primitives/containers to Lua literal representation."""
     if obj is None:
         return "nil"
     if isinstance(obj, bool):
@@ -40,6 +41,7 @@ def run_lua_with_wf(
     lua_bin: str = "lua",
     timeout_s: float = 5.0,
 ) -> tuple[bool, str, str]:
+    """Execute Lua with injected wf/_utils stubs and capture stdout/stderr."""
     wf_lua = _lua_literal(wf_table)
     utils_stub = """
 local _utils = {
@@ -89,6 +91,7 @@ def run_lua_with_wf_capture_result(
     lua_bin: str = "lua",
     timeout_s: float = 5.0,
 ) -> tuple[bool, str, str, object | None]:
+    """Execute Lua and additionally parse JSON-encoded return value marker."""
     wf_lua = _lua_literal(wf_table)
     utils_stub = """
 local _utils = {
@@ -188,6 +191,7 @@ end
 
 
 def _extract_result_json(stdout: str) -> object | None:
+    """Extract last JSON payload emitted after internal result marker."""
     for line in reversed(stdout.splitlines()):
         if line.startswith(RESULT_JSON_MARKER):
             payload = line[len(RESULT_JSON_MARKER) :]

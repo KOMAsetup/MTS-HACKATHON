@@ -12,6 +12,7 @@ logger = logging.getLogger(__name__)
 
 
 def _ollama_options(settings: Settings) -> dict[str, Any]:
+    """Build Ollama inference options from current service settings."""
     opts: dict[str, Any] = {
         "num_ctx": settings.num_ctx,
         "num_predict": settings.num_predict,
@@ -33,6 +34,7 @@ async def chat_completion(
     keep_alive: str | None = None,
     allow_empty_content: bool = False,
 ) -> str:
+    """Send chat request to Ollama with retries and normalized content output."""
     base = settings.ollama_host.rstrip("/")
     url = f"{base}/api/chat"
     payload: dict[str, Any] = {
@@ -81,6 +83,7 @@ async def ollama_warmup(client: httpx.AsyncClient, settings: Settings) -> None:
 async def ollama_tags_payload(
     client: httpx.AsyncClient, settings: Settings
 ) -> dict[str, Any] | None:
+    """Fetch raw tags payload or return None when Ollama is unreachable."""
     base = settings.ollama_host.rstrip("/")
     url = f"{base}/api/tags"
     try:
@@ -96,6 +99,7 @@ async def ollama_tags_payload(
 
 
 def _model_names_from_tags(payload: dict[str, Any]) -> list[str]:
+    """Extract model names list from /api/tags response payload."""
     models = payload.get("models") or []
     names: list[str] = []
     if not isinstance(models, list):
@@ -110,6 +114,7 @@ def _model_names_from_tags(payload: dict[str, Any]) -> list[str]:
 
 
 def _model_is_present(want: str, names: list[str]) -> bool:
+    """Check model presence with optional tag-agnostic fallback by root name."""
     if want in names:
         return True
     root = want.split(":", 1)[0]

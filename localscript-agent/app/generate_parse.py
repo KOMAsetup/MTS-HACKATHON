@@ -8,6 +8,7 @@ ExtractKind = Literal["clarification", "code", "parse_error"]
 
 
 def _strip_json_fence(text: str) -> str:
+    """Remove outer markdown json fences before JSON parsing attempts."""
     s = text.strip()
     fence = re.search(r"```(?:json)?\s*\n([\s\S]*?)\n```", s, re.IGNORECASE)
     if fence:

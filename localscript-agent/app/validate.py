@@ -32,6 +32,7 @@ FORBIDDEN_PATTERNS = [
 
 
 def static_guard_violations(code: str) -> list[str]:
+    """Return forbidden-pattern matches for potentially unsafe Lua code."""
     violations: list[str] = []
     for pat in FORBIDDEN_PATTERNS:
         if re.search(pat, code, re.IGNORECASE):
@@ -40,6 +41,7 @@ def static_guard_violations(code: str) -> list[str]:
 
 
 def luac_check(code: str, luac_path: str = "luac") -> tuple[bool, str]:
+    """Run luac parser check and return success flag plus message."""
     try:
         with tempfile.NamedTemporaryFile(
             mode="w",
@@ -66,6 +68,7 @@ def luac_check(code: str, luac_path: str = "luac") -> tuple[bool, str]:
 
 
 def validate_code(code: str, luac_path: str = "luac") -> tuple[bool, list[str]]:
+    """Compose static and syntax checks into legacy validate_code output."""
     errors: list[str] = []
     for v in static_guard_violations(code):
         errors.append(f"static: {v}")

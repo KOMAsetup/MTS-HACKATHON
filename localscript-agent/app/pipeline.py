@@ -32,6 +32,7 @@ from app.prompts import (
 
 
 def effective_max_repair(settings: Settings, override: int | None) -> int:
+    """Resolve request override against server-side repair cap."""
     cap = settings.max_repair_server_cap
     if override is not None:
         return min(override, cap)
@@ -39,6 +40,7 @@ def effective_max_repair(settings: Settings, override: int | None) -> int:
 
 
 def _extract_context_from_prompt(prompt: str) -> dict | None:
+    """Parse optional JSON Context block embedded in the task prompt."""
     marker = "\n\nContext:\n"
     pos = prompt.find(marker)
     if pos < 0:
@@ -171,6 +173,7 @@ async def run_generate_pipeline(
     settings: Settings,
     body: GenerateRequest,
 ) -> GenerateResponse:
+    """Handle generate flow: parse mode, validate output, and repair if needed."""
     clarification_mode = settings.clarification_mode
     user_msg = build_generate_user_message(
         body.prompt,
@@ -242,6 +245,7 @@ async def run_refine_pipeline(
     settings: Settings,
     body: RefineRequest,
 ) -> GenerateResponse:
+    """Handle refine flow: build history prompt, then validate/repair result."""
     user_msg = build_refinement_user_message(
         body.prompt,
         body.refinement_history,
@@ -300,6 +304,7 @@ async def run_debug_pipeline(
     settings: Settings,
     body: DebugRequest,
 ) -> DebugResponse:
+    """Handle debug flow with checks snapshot and one LLM review round."""
     result = run_all_checks(body.code, settings=settings)
     checks = result_to_check_items(result)
     hist: list[DebugHistoryTurn] = list(body.debug_history)

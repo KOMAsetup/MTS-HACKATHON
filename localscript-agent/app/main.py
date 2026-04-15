@@ -23,6 +23,7 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    """Create shared HTTP client and optional Ollama warmup on startup."""
     app.state.http = httpx.AsyncClient()
     if settings.ollama_warmup_enabled:
         client: httpx.AsyncClient = app.state.http
@@ -39,6 +40,7 @@ app = FastAPI(title="LocalScript API", version="1.0.0", lifespan=lifespan)
 
 @app.get("/health", response_model=HealthResponse)
 async def health():
+    """Report API, Ollama transport, and model readiness status."""
     client: httpx.AsyncClient = app.state.http
     http_ok, model_ready = await ollama_http_ok_and_model_ready(client, settings)
     return HealthResponse(
@@ -56,6 +58,7 @@ async def health():
 
 @app.post("/generate", response_model=GenerateResponse, response_model_exclude_none=True)
 async def generate(body: GenerateRequest):
+    """Generate Lua for a new task and run validation/repair pipeline."""
     client: httpx.AsyncClient = app.state.http
     try:
         return await run_generate_pipeline(client, settings, body)
@@ -67,6 +70,7 @@ async def generate(body: GenerateRequest):
 
 @app.post("/refine", response_model=GenerateResponse, response_model_exclude_none=True)
 async def refine(body: RefineRequest):
+    """Refine previously generated Lua using full refinement history."""
     client: httpx.AsyncClient = app.state.http
     try:
         return await run_refine_pipeline(client, settings, body)
@@ -78,6 +82,7 @@ async def refine(body: RefineRequest):
 
 @app.post("/debug", response_model=DebugResponse, response_model_exclude_none=True)
 async def debug(body: DebugRequest):
+    """Run debug checks plus one review pass for user-supplied code."""
     client: httpx.AsyncClient = app.state.http
     try:
         return await run_debug_pipeline(client, settings, body)

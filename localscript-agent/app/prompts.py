@@ -74,6 +74,7 @@ def build_user_message(
     previous_code: str | None = None,
     feedback: str | None = None,
 ) -> str:
+    """Build generic task message with optional context, code, and feedback."""
     parts = [f"Task:\n{prompt.strip()}"]
     if context is not None:
         parts.append("Context:\n" + json.dumps(context, ensure_ascii=False, indent=2))
@@ -98,6 +99,7 @@ def compress_context_for_repair(
     str_limit: int = 96,
     list_limit: int = 4,
 ) -> str:
+    """Prune and truncate context JSON to keep repair prompts compact."""
     def prune(obj: object, depth: int) -> object:
         if depth >= max_depth:
             return "…"
@@ -136,6 +138,7 @@ def repair_user_message_compact(
     feedback: str | None = None,
     feedback_max_chars: int = 400,
 ) -> str:
+    """Build short repair prompt with errors, context, and broken code."""
     task = task_prompt.strip()
     if len(task) > task_max_chars:
         task = task[: task_max_chars - 1] + "…"
@@ -161,6 +164,7 @@ def messages_for_chat(
     user_content: str,
     include_few_shot: bool = True,
 ) -> list[dict[str, str]]:
+    """Compose standard system + optional few-shot + user chat messages."""
     msgs: list[dict[str, str]] = [{"role": "system", "content": SYSTEM_PROMPT}]
     if include_few_shot:
         msgs.extend(
@@ -229,6 +233,7 @@ def build_generate_user_message(
     clarification_history: list[ClarificationTurn],
     context: dict | None = None,
 ) -> str:
+    """Build generate request text including clarification history when present."""
     parts: list[str] = [f"Task:\n{prompt.strip()}"]
     if context is not None:
         parts.append("Context:\n" + json.dumps(context, ensure_ascii=False, indent=2))
@@ -251,6 +256,7 @@ def build_refinement_user_message(
     refinement_history: list["RefinementStep"],
     context: dict | None = None,
 ) -> str:
+    """Build refinement prompt from chronological assistant/user iterations."""
     parts: list[str] = [f"Task (original):\n{prompt.strip()}"]
     if context is not None:
         parts.append("Context:\n" + json.dumps(context, ensure_ascii=False, indent=2))
@@ -278,6 +284,7 @@ _DEBUG_HIST_SUGGESTED_MAX = 14_000
 
 
 def _truncate_debug_text(s: str, max_chars: int) -> str:
+    """Trim debug history fragments to bounded size per section."""
     t = s.strip()
     if len(t) <= max_chars:
         return t
@@ -305,6 +312,7 @@ def build_debug_user_message(
     debug_history: list[Any],
     checks_text: str,
 ) -> str:
+    """Build debug prompt with current checks, code, history, and primary task."""
     from app.models_io import DebugHistoryTurn
 
     parts: list[str] = []
@@ -357,6 +365,7 @@ def messages_for_generate_chat(
     clarification_mode: bool,
     include_few_shot: bool = True,
 ) -> list[dict[str, str]]:
+    """Compose generate-mode messages with selected system prompt variant."""
     sys_content = (
         SYSTEM_PROMPT_GENERATE_JSON if clarification_mode else SYSTEM_PROMPT_GENERATE_JSON_CODE_ONLY
     )
@@ -377,6 +386,7 @@ def messages_for_generate_chat(
 
 
 def messages_for_debug_chat(user_content: str) -> list[dict[str, str]]:
+    """Compose minimal system+user message set for debug endpoint."""
     return [
         {"role": "system", "content": SYSTEM_PROMPT_DEBUG},
         {"role": "user", "content": user_content},
