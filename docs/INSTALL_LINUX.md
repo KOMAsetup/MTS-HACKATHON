@@ -237,6 +237,35 @@ curl -s http://127.0.0.1:8080/generate \
 
 Должен прийти ответ с полем кода/текста (как в вашем API). Долгое ожидание на первом запросе нормально — прогрев модели.
 
+### 7.4 Запуск CLI-интерфейса (опционально)
+
+CLI находится в `localscript-agent/scripts/demo_cli.py` и работает как клиент к уже поднятому API.
+
+В **третьем** терминале:
+
+```bash
+cd /путь/к/localscript-agent
+./scripts/bootstrap_dev.sh
+conda activate localscript-agent
+python scripts/demo_cli.py --base-url http://127.0.0.1:8080
+```
+
+Полезные команды в CLI: `/health`, `/help`, `/refine`, `/debug`.
+
+### 7.5 Запуск Web-интерфейса Streamlit (опционально)
+
+Web UI находится в `localscript-agent/scripts/demo_streamlit.py` и также обращается к API на `:8080`.
+
+```bash
+cd /путь/к/localscript-agent
+conda activate localscript-agent
+python -m streamlit run scripts/demo_streamlit.py --server.address 0.0.0.0 --server.port 8501
+```
+
+Откройте в браузере: `http://127.0.0.1:8501`.
+
+Если запускаете API через Docker, а GUI/CLI с хоста — это нормальный режим: оба интерфейса являются внешними клиентами одного и того же HTTP API.
+
 ---
 
 ## 8. Если модель не подтянулась автоматически

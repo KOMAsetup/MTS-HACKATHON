@@ -214,6 +214,31 @@ curl -s http://127.0.0.1:8080/generate \
   -d '{"prompt":"Функция factorial(n) для целого n >= 0, на Lua"}'
 ```
 
+### 7.4 Запуск CLI-интерфейса (из WSL, опционально)
+
+CLI (`scripts/demo_cli.py`) запускается в WSL и обращается к уже поднятому API.
+
+```bash
+cd ~/projects/<имя-каталога>/localscript-agent
+./scripts/bootstrap_dev.sh
+conda activate localscript-agent
+python scripts/demo_cli.py --base-url http://127.0.0.1:8080
+```
+
+Быстрые команды внутри CLI: `/health`, `/help`, `/refine`, `/debug`.
+
+### 7.5 Запуск Web-интерфейса Streamlit (из WSL, опционально)
+
+```bash
+cd ~/projects/<имя-каталога>/localscript-agent
+conda activate localscript-agent
+python -m streamlit run scripts/demo_streamlit.py --server.address 0.0.0.0 --server.port 8501
+```
+
+Откройте в браузере Windows: `http://localhost:8501` (или `http://127.0.0.1:8501`).
+
+Если API поднят через Docker Compose, а GUI/CLI запускаются в WSL как отдельные процессы, это корректная схема: оба интерфейса являются клиентами одного HTTP API на `:8080`.
+
 ---
 
 ## 8. Порты 8080 и 11434
