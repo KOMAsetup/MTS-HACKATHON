@@ -1,0 +1,21 @@
+@startuml L2_deployment
+title LocalScript — C4: развёртывание (deployment, Docker Compose)
+
+!include ../vendor/C4-PlantUML/C4_Deployment.puml
+
+LAYOUT_WITH_LEGEND()
+
+Deployment_Node(host, "Хост разработчика / стенд", "Linux x86_64 (или WSL2); Docker Engine + Compose v2; опционально NVIDIA + nvidia-container-toolkit") {
+    Deployment_Node(dc, "Docker Compose", "localscript-agent/docker-compose.yml") {
+        Deployment_Node(appc, "Контейнер app", "Образ из Dockerfile (Python, FastAPI, luac)") {
+            Container(app, "App", "Python 3.11", "Порт 8080→хост; OLLAMA_HOST=http://ollama:11434")
+        }
+        Deployment_Node(ollamac, "Контейнер ollama", "ollama/ollama:latest") {
+            Container(ollama, "Ollama", "GGUF", "Порт 11434; GPU gpus: all; том ollama для весов")
+        }
+    }
+}
+
+Rel(app, ollama, "HTTP", "внутренняя сеть compose")
+
+@enduml

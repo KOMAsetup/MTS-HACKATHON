@@ -1,0 +1,27 @@
+@startuml L5_dynamic_generate
+title LocalScript — C4: динамика сценария POST /generate (упрощённо)
+
+!include ../vendor/C4-PlantUML/C4_Dynamic.puml
+
+LAYOUT_WITH_LEGEND()
+
+Person(user, "Клиент", "HTTP")
+Container(ollama, "Ollama", "GGUF", "Локальная модель")
+
+Container_Boundary(app, "App") {
+    Component(http_api, "HTTP API", "FastAPI", "POST /generate")
+    Component(orch, "Пайплайн", "Python", "run_generate_pipeline")
+    Component(nlp, "Промпты / парсинг", "Python", "сообщения, JSON или extract")
+    Component(llm, "Клиент Ollama", "httpx", "chat_completion")
+    Component(gates, "Проверки Lua", "luac + статика", "run_all_checks, repair")
+}
+
+Rel(user, http_api, "prompt, опции", "JSON")
+Rel(http_api, orch, "вызов", "")
+Rel(orch, nlp, "первичное сообщение", "")
+Rel(orch, llm, "раунд генерации", "")
+Rel(llm, ollama, "/api/chat", "JSON")
+Rel_Back(ollama, llm, "текст ответа", "JSON")
+Rel(orch, gates, "валидация и repair", "цикл при ошибках")
+
+@enduml

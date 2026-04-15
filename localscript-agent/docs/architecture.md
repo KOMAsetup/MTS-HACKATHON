@@ -1,19 +1,22 @@
-# Архитектура (черновик для C4)
+# Архитектура LocalScript
 
-## Контекст (C4 Level 1)
+Кратко: пользователь или интеграция обращается к **HTTP API** (FastAPI); сервис собирает промпт, вызывает локальный **Ollama**, извлекает Lua, прогоняет **статические проверки** и **`luac`**, при необходимости выполняет **цикл repair**. Внешние LLM API в runtime не используются.
 
-Пользователь или интеграционный контур обращается к HTTP API **LocalScript** в закрытой сети. Сервис вызывает локальный **Ollama** на GPU; внешние LLM API не используются.
+## C4 (полная модель и рендер)
 
-## Контейнеры (C4 Level 2)
+- **Текст, таблицы, соответствие модулям:** [`../../docs/c4/C4_OVERVIEW.md`](../../docs/c4/C4_OVERVIEW.md)
+- **Диаграммы PlantUML:** [`../../docs/c4/diagrams/`](../../docs/c4/diagrams/)
+- **Как собрать PNG/SVG/PDF:** [`../../docs/c4/README.md`](../../docs/c4/README.md) или `./scripts/render_c4.sh` из корня репозитория `mts`
 
-- **App** (Python, FastAPI): приём `POST /generate`, сборка промпта, вызов Ollama, извлечение Lua, валидация (`luac`, статические правила), цикл repair.
-- **Ollama**: инференс GGUF-модели на GPU, параметры `num_ctx=4096`, `num_predict=256`.
+## Компоненты (сводка, без дублирования C4)
 
-## Компоненты App
+| Область | Модули |
+|---------|--------|
+| HTTP | `app/main.py` |
+| Пайплайн | `app/pipeline.py` |
+| Ollama | `app/ollama_client.py` |
+| Промпты / разбор | `app/prompts.py`, `app/generate_parse.py`, `app/extract.py` |
+| Проверки | `app/validate.py`, `app/code_checks.py` |
+| Песочница (eval, не hot path API) | `app/sandbox.py`, `scripts/eval_public.py` |
 
-- `pipeline.generate_lua` — оркестрация.
-- `ollama_client` — HTTP `/api/chat`.
-- `validate` — `luac -p` + запрет `require`/`io`/`os`.
-- `sandbox` — опциональный прогон с mock `wf` (eval).
-
-Перенесите блоки в официальный C4-шаблон организаторов (диаграмма + краткие подписи).
+Развёртывание по умолчанию: **`docker-compose.yml`** в каталоге `localscript-agent/` (сервисы `app` и `ollama`).

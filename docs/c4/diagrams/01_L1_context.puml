@@ -1,0 +1,13 @@
+@startuml L1_context
+title LocalScript — C4: системный контекст (Level 1)
+
+!include ../vendor/C4-PlantUML/C4_Context.puml
+
+LAYOUT_WITH_LEGEND()
+
+Person(user, "Пользователь или интеграция", "HTTP-клиент, скрипты, CI; формулирует задачу на естественном языке.")
+System(localscript, "LocalScript", "Локальный сервис генерации и доработки Lua: без внешних LLM API в runtime, только локальная модель.")
+
+Rel(user, localscript, "Вызывает API", "HTTP JSON\n/generate, /refine, /debug, /health")
+
+@enduml

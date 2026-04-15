@@ -1,0 +1,18 @@
+@startuml L2_containers
+title LocalScript — C4: контейнеры (Level 2)
+
+!include ../vendor/C4-PlantUML/C4_Container.puml
+
+LAYOUT_WITH_LEGEND()
+
+Person(user, "Пользователь или интеграция", "HTTP-клиент")
+
+System_Boundary(ls, "LocalScript (Docker Compose)") {
+    Container(app, "App", "Python 3.11, FastAPI, Uvicorn", "HTTP API, промпты, пайплайны generate/refine/debug, luac, статика, опциональный линтер, цикл repair.")
+    Container(ollama, "Ollama", "ollama/ollama, GGUF на GPU", "POST /api/chat; модель по умолчанию qwen2.5-coder:7b; num_ctx=4096, num_predict=256.")
+}
+
+Rel(user, app, "JSON API", "8080/tcp (публикация)")
+Rel(app, ollama, "Инференс", "HTTP\nOLLAMA_HOST → 11434 (сеть compose)")
+
+@enduml

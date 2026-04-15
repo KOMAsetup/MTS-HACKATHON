@@ -55,7 +55,7 @@ flowchart LR
   Pipeline --> Sandbox[sandbox_lua]
 ```
 
-Расширенное описание: [`localscript-agent/docs/architecture.md`](localscript-agent/docs/architecture.md).
+Расширенное описание: [`localscript-agent/docs/architecture.md`](localscript-agent/docs/architecture.md). C4 (таблицы, PlantUML, рендер в PNG/SVG/PDF): [`docs/c4/C4_OVERVIEW.md`](docs/c4/C4_OVERVIEW.md), [`docs/c4/README.md`](docs/c4/README.md), скрипт [`scripts/render_c4.sh`](scripts/render_c4.sh).
 
 ## Что уже есть / черновики / дорожная карта
 

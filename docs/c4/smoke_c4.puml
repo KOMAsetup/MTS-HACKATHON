@@ -1,0 +1,12 @@
+@startuml smoke_c4
+!include vendor/C4-PlantUML/C4_Context.puml
+!include vendor/C4-PlantUML/C4_Container.puml
+
+LAYOUT_WITH_LEGEND()
+
+Person(user, "Пользователь / клиент", "HTTP")
+System(localscript, "LocalScript", "Генерация Lua локально")
+
+Rel(user, localscript, "POST /generate, /refine", "HTTPS/HTTP")
+
+@enduml

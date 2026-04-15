@@ -1,0 +1,31 @@
+@startuml L3_components
+title LocalScript — C4: компоненты внутри контейнера App (Level 3)
+
+!include ../vendor/C4-PlantUML/C4_Component.puml
+!include ../vendor/C4-PlantUML/C4_Container.puml
+
+LAYOUT_WITH_LEGEND()
+
+Person(user, "Пользователь или интеграция", "Внешний HTTP-клиент")
+
+Container(ollama, "Ollama", "C++/GGUF", "Локальный инференс (см. docker-compose).")
+
+Container_Boundary(app, "App — FastAPI") {
+    Component(http_api, "HTTP API", "FastAPI", "main.py: /generate, /refine, /debug, /health; httpx AsyncClient в lifespan.")
+    Component(orch, "Пайплайн", "Python", "pipeline.py: generate/refine/debug, run_repair_loop.")
+    Component(llm, "Клиент Ollama", "httpx", "ollama_client.py: chat_completion, ollama_health.")
+    Component(nlp, "Промпты и разбор ответа", "Python", "prompts.py; generate_parse.py; extract.py.")
+    Component(gates, "Проверки Lua", "subprocess", "code_checks.py + validate.py: статика, luac -p, опц. линтер.")
+    Component(contracts, "Контракты и настройки", "Pydantic", "models_io.py; config.py / Settings.")
+}
+
+Rel(user, http_api, "Запросы API", "HTTP JSON")
+Rel(http_api, orch, "Делегирует", "async")
+Rel(orch, nlp, "Сборка сообщений / разбор", "")
+Rel(orch, llm, "Вызов модели", "")
+Rel(orch, gates, "Проверки и repair", "")
+Rel(llm, ollama, "POST /api/chat", "HTTP")
+Rel_R(nlp, contracts, "Режимы и структуры", "")
+Rel_R(gates, contracts, "Пути luac, линтер", "")
+
+@enduml
