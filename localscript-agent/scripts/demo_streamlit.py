@@ -79,7 +79,6 @@ def _merge_context_into_prompt(prompt: str, context: dict[str, Any] | None) -> s
 
 def _init_state() -> None:
     st.session_state.setdefault("prompt", "")
-    st.session_state.setdefault("context_json", "{}")
     st.session_state.setdefault("clarification_history_json", "[]")
     st.session_state.setdefault("refinement_history_json", "[]")
     st.session_state.setdefault("debug_history_json", "[]")
@@ -161,8 +160,7 @@ def main() -> None:
         with st.expander("Field guide", expanded=False):
             st.markdown(
                 "- `Prompt`: task for generation.\n"
-                "- `Context JSON`: optional context merged into prompt text as `Context:` block.\n"
-                "- `Enable semantic validation`: inject semantic checks into context block.\n"
+                "- `Enable semantic validation`: inject semantic checks into prompt `Context:` block.\n"
                 "- `Semantic rules JSON`: semantic checks for result object/stdout.\n"
                 "- `Clarification history JSON`: tim-style list for `/generate`.\n"
                 "- `Refinement history JSON`: tim-style list for `/refine`.\n"
@@ -174,16 +172,11 @@ def main() -> None:
             value=st.session_state["prompt"],
             height=110,
         )
-        st.session_state["context_json"] = st.text_area(
-            "Context JSON (merged into prompt text)",
-            value=st.session_state["context_json"],
-            height=140,
-        )
         st.session_state["enable_semantic_validation"] = st.checkbox(
             "Enable semantic validation for this request",
             value=st.session_state["enable_semantic_validation"],
             help=(
-                "When enabled, GUI injects '__semantic_validation' into Context JSON. "
+                "When enabled, GUI injects '__semantic_validation' into prompt Context block. "
                 "Backend extracts Context from prompt and runs semantic checks."
             ),
         )
@@ -236,7 +229,6 @@ def main() -> None:
         with c2:
             do_debug = st.button("POST /debug", use_container_width=True)
 
-    context, context_err = _load_json(st.session_state["context_json"], "context")
     clarification_history, clar_err = _load_json(
         st.session_state["clarification_history_json"], "clarification_history"
     )
@@ -252,13 +244,10 @@ def main() -> None:
         "semantic_rules",
     )
 
-    errors = [e for e in [context_err, clar_err, refine_err, debug_hist_err, sem_err] if e]
+    errors = [e for e in [clar_err, refine_err, debug_hist_err, sem_err] if e]
     for e in errors:
         st.warning(e)
 
-    if context is not None and not isinstance(context, dict):
-        st.warning("context: JSON must be object or null.")
-        context = None
     if clarification_history is None:
         clarification_history = []
     if refinement_history is None:
@@ -278,14 +267,11 @@ def main() -> None:
         st.warning("semantic_rules: JSON must be object.")
         semantic_rules = None
 
-    context_for_prompt = context
+    context_for_prompt: dict[str, Any] | None = None
     if st.session_state["enable_semantic_validation"]:
-        if context_for_prompt is None:
-            context_for_prompt = {}
-        if isinstance(context_for_prompt, dict):
-            context_for_prompt = dict(context_for_prompt)
-            if isinstance(semantic_rules, dict):
-                context_for_prompt["__semantic_validation"] = semantic_rules
+        context_for_prompt = {}
+        if isinstance(semantic_rules, dict):
+            context_for_prompt["__semantic_validation"] = semantic_rules
 
     prompt_ok = bool(st.session_state["prompt"].strip())
     debug_code_ok = bool(st.session_state["debug_code"].strip())
