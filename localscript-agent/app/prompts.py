@@ -207,20 +207,23 @@ SYSTEM_PROMPT_DEBUG = """You are a senior reviewer for Lua 5.x workflow scripts 
 Message layout: (1) static checks + current Lua, (2) optional earlier /debug transcript, (3) **PRIMARY
 TASK** last — the user's current question.
 
-**problem_description** rules:
-- The PRIMARY TASK is often a direct question. You MUST give a **concrete answer first** (the fact,
-  the number, the name). Examples: "What language?" → start with **Lua** (Lua 5.x / LowCode workflow
-  Lua), not with "The user is asking about the programming language". "What is 5+3?" → start with
-  **8**, not with "The user wants to know the sum".
-- **Forbidden:** only restating or describing the user's question without answering it.
-- After the direct answer, you may add one short sentence on checks/code if still useful.
+Your goal in /debug is ALWAYS dual:
+1) answer the user and participate in the dialogue;
+2) provide usable corrected Lua code.
 
-**suggested_code** must be non-empty, complete, syntactically valid Lua. If the PRIMARY TASK is not
-about changing code, still return the best fix for the current snippet (or the same snippet if it is
-already valid Lua).
+**problem_description** rules:
+- Start with a direct answer to PRIMARY TASK (fact/number/name) when it is a question.
+- Never only restate the question ("the user asks ...") without answering it.
+- If relevant, follow with brief code/check notes.
+- problem_description MUST contain at least one non-empty textual line with useful content.
+- Do not return an empty string, whitespace-only text, or only punctuation in problem_description.
+
+**suggested_code** rules:
+- Must be non-empty, complete, syntactically valid Lua.
+- Even for conversational questions, still return best Lua for the current snippet (fix or keep a valid version).
 
 You MUST respond with exactly one JSON object (no markdown outside it):
-{"problem_description":"<concrete answer first, then optional notes>","suggested_code":"<full Lua>"}
+{"problem_description":"<direct answer first, then optional technical notes>","suggested_code":"<full Lua>"}
 Escape strings properly for JSON."""
 
 
@@ -250,7 +253,7 @@ def build_refinement_user_message(
     parts: list[str] = [f"Task (original):\n{prompt.strip()}"]
     blocks: list[str] = []
     for i, step in enumerate(refinement_history):
-        chk = ", ".join(f"{c.stage}:{c.passed}" for c in step.checks) if step.checks else "(no checks recorded)"
+        chk = _format_checks_compact(step.checks)
         blocks.append(
             f"Step {i + 1}\n"
             f"Assistant code:\n```lua\n{step.assistant_code.strip()}\n```\n"
@@ -278,7 +281,7 @@ def _truncate_debug_text(s: str, max_chars: int) -> str:
     return t[: max_chars - 1] + "…"
 
 
-def _format_debug_history_checks_block(checks: Any) -> str:
+def _format_checks_compact(checks: Any) -> str:
     """Only all_checks_passed plus failed checks (no full passed list)."""
     if not checks:
         return "all_checks_passed: true (empty snapshot — treat as no failures)."
@@ -315,7 +318,7 @@ def build_debug_user_message(
             if not isinstance(turn, DebugHistoryTurn):
                 continue
             uc = _truncate_debug_text(turn.user_code, _DEBUG_HIST_USER_CODE_MAX)
-            chk_block = _format_debug_history_checks_block(turn.checks)
+            chk_block = _format_checks_compact(turn.checks)
             up = (turn.user_prompt or "").strip()
             user_q = f"User question / note then:\n{up}\n" if up else "User question / note then:\n(none)\n"
             pd = _truncate_debug_text(turn.problem_description, _DEBUG_HIST_PROBLEM_MAX)

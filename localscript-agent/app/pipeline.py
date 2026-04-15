@@ -281,10 +281,15 @@ async def run_debug_pipeline(
     problem, suggested, err = parse_debug_response(raw)
     if err or problem is None or suggested is None:
         raise ValueError(f"debug response parse failed: {err or 'missing fields'}")
+    problem = str(problem).strip()
+    suggested = str(suggested).strip()
     if not str(suggested).strip():
         suggested = body.code.strip()
-    if not str(problem).strip():
+    if not problem:
         problem = "No textual analysis returned; treating suggested_code as echo of input."
+    elif not any(ch.isalnum() for ch in problem):
+        # Guard against punctuation-only / low-information text from weak model outputs.
+        problem = "Model response was low-information; please retry with a more specific question."
     return DebugResponse(
         checks=checks,
         all_checks_passed=result.ok,

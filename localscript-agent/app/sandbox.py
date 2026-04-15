@@ -46,13 +46,48 @@ local _utils = {
   },
 }
 """
+    # Emulate common LowCode runtime behavior:
+    # - wf.initVariables may be used as a callable helper (wf.initVariables("k", v))
+    # - and/or as a table with incoming values (wf.initVariables.recallTime)
+    initvars_stub = """
+if wf.initVariables == nil then
+  wf.initVariables = {}
+end
+if type(wf.initVariables) == "table" then
+  setmetatable(wf.initVariables, {
+    __call = function(self, key, value)
+      if type(key) == "string" and value ~= nil then
+        wf.vars = wf.vars or {}
+        wf.vars[key] = value
+      end
+      return value
+    end
+  })
+elseif type(wf.initVariables) == "function" then
+  -- leave function as-is
+else
+  -- unexpected type: wrap into a callable table preserving the original value under _value
+  local original = wf.initVariables
+  wf.initVariables = setmetatable({ _value = original }, {
+    __call = function(self, key, value)
+      if type(key) == "string" and value ~= nil then
+        wf.vars = wf.vars or {}
+        wf.vars[key] = value
+      end
+      return value
+    end
+  })
+end
+"""
     wrapper = (
-        utils_stub + f"local wf = {wf_lua}\n"
-        "local _ok, _result = pcall(function()\n"
-        f"{code}\n"
-        "end)\n"
-        "if not _ok then error(_result) end\n"
-        "if _result ~= nil then print(tostring(_result)) end\n"
+        utils_stub
+        + f"local wf = {wf_lua}\n"
+        + initvars_stub
+        + "local _ok, _result = pcall(function()\n"
+        + f"{code}\n"
+        + "end)\n"
+        + "if not _ok then error(_result) end\n"
+        + "if _result ~= nil then print(tostring(_result)) end\n"
     )
     try:
         with tempfile.NamedTemporaryFile(

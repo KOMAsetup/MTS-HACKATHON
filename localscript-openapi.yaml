@@ -74,6 +74,8 @@ paths:
         Server runs **run_all_checks** on **code**, returns **checks** and **all_checks_passed**,
         then a single LLM call with a review-specific system prompt (not the generate prompt).
         Response includes **problem_description** and **suggested_code** for the user to inspect.
+        In `/debug`, model objective is dual: answer the user's current question and provide
+        corrected/usable Lua code in the same response.
 
         For multi-turn review, the client appends each round to **debug_history** and sends the
         accumulated array on the next request; the server does not store sessions.

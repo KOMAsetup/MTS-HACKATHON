@@ -26,12 +26,12 @@ def _banner(base_url: str) -> None:
         "LocalScript demo CLI\n"
         f"  API: {base_url.rstrip('/')}\n"
         "  Plain line — POST /generate (new task; local refine chain reset)\n"
-        "  Commands: /help  /health  /settings  /url <base>\n"
+        "  Commands: /help  /health  /settings  /info  /url <base>\n"
         "            /ctx <file.json>|clear|show  (merge JSON into prompt as Context:)\n"
         "            /verbose on|off|status\n"
         "            /log [N|all|clear]  (last N full JSON responses; max "
         f"{RESPONSE_LOG_BUFFER_MAX})\n"
-        "            /refine  (multi-line feedback; uses refinement_history)\n"
+        "            /refine  (single-line feedback; send with one Enter)\n"
         "            /debug …          POST /debug (см. README «Демо CLI: команда /debug»)\n"
         "            /debug new        сброс debug_history и подсказки suggestion\n"
         "            /quit\n"
@@ -43,31 +43,25 @@ def _cmd_help() -> None:
         "Commands:\n"
         "  /help           this text\n"
         "  /health         GET /health\n"
-        "  /settings       effective CLI settings\n"
+        "  /settings       effective CLI settings only\n"
+        "  /info           current session state (not config)\n"
         "  /url <url>      base URL for this session\n"
         "  /ctx …          load/show/clear JSON merged into generate prompt\n"
         "  /verbose on|off|status   verbose prints full JSON after each call\n"
         "  /log [N|all|clear]      ring buffer of full server JSON (generate/refine/debug)\n"
-        "  /refine         refine last code (multi-line feedback, empty line to cancel)\n"
+        "  /refine         refine last code (single-line feedback, empty line to cancel)\n"
         "  /debug …        POST /debug — подробности в README (раздел «Демо CLI: команда /debug»)\n"
         "  /debug new      сброс debug_history и last_debug_suggested_code\n"
         "  /quit           exit\n"
     )
 
 
-def _read_multiline_feedback() -> str | None:
-    print("Feedback (empty line immediately to cancel, or type lines then empty line to send):")
-    lines: list[str] = []
-    first = input()
-    if first == "":
+def _read_feedback_line() -> str | None:
+    print("Feedback (single line; empty to cancel):")
+    line = input()
+    if not line.strip():
         return None
-    lines.append(first)
-    while True:
-        line = input()
-        if line == "":
-            break
-        lines.append(line)
-    return "\n".join(lines)
+    return line
 
 
 def _read_lua_for_debug(
@@ -251,9 +245,26 @@ def main() -> int:
                             "base_url": base_url,
                             "http_timeout_s": settings.http_timeout_s,
                             "default_context_file": settings.default_context_file,
-                            "active_context": context is not None,
                             "verbose": verbose,
+                        },
+                        indent=2,
+                        ensure_ascii=False,
+                    )
+                )
+                continue
+
+            if raw == "/info":
+                print(
+                    json.dumps(
+                        {
+                            "active_context": context is not None,
                             "response_log_entries": len(response_log),
+                            "has_last_code": bool(last_code),
+                            "refinement_history_steps": len(refinement_chain),
+                            "debug_history_rounds": len(debug_history),
+                            "has_last_debug_suggested_code": bool(
+                                last_debug_suggested_code
+                            ),
                         },
                         indent=2,
                         ensure_ascii=False,
@@ -415,7 +426,7 @@ def main() -> int:
                         file=sys.stderr,
                     )
                     continue
-                fb = _read_multiline_feedback()
+                fb = _read_feedback_line()
                 if fb is None:
                     print("Cancelled.")
                     continue

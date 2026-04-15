@@ -1,6 +1,7 @@
-from app.models_io import CheckItem, DebugHistoryTurn
+from app.models_io import CheckItem, DebugHistoryTurn, RefinementStep
 from app.prompts import (
     build_debug_user_message,
+    build_refinement_user_message,
     build_user_message,
     compress_context_for_repair,
     repair_user_message_compact,
@@ -77,6 +78,24 @@ def test_build_debug_user_message_history_only_failed_checks_listed():
     assert "Failed checks:" in msg
     assert "syntax: near '='" in msg
     assert "static:" not in msg
+
+
+def test_build_refinement_user_message_compact_checks_only():
+    hist = [
+        RefinementStep(
+            assistant_code="return 1",
+            user_feedback="fix it",
+            checks=[
+                CheckItem(id="s0", stage="syntax", passed=False, message="near '+'"),
+                CheckItem(id="st0", stage="static", passed=True, message=""),
+            ],
+        )
+    ]
+    msg = build_refinement_user_message("Do math", hist)
+    assert "all_checks_passed: false" in msg
+    assert "Failed checks:" in msg
+    assert "syntax: near '+'" in msg
+    assert "stage:True" not in msg
 
 
 def test_repair_user_message_compact_contains_errors_and_code():

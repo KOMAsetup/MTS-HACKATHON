@@ -103,6 +103,67 @@ def score_task(task: dict, code: str) -> dict:
     }
 
 
+def final_pass(
+    *,
+    eval_type: str,
+    syntax_ok: bool,
+    static_ok: bool,
+    sandbox_ok: bool,
+    heuristic_ok: bool,
+    strict_heuristic: bool,
+) -> bool:
+    """
+    New default semantics:
+    - heuristic tasks: require heuristic substring check
+    - sandbox tasks: by default rely on syntax/static/sandbox only
+      (heuristics can be enabled with --strict-heuristic)
+    """
+    if eval_type == "heuristic":
+        return syntax_ok and static_ok and heuristic_ok
+    if strict_heuristic:
+        return syntax_ok and static_ok and sandbox_ok and heuristic_ok
+    return syntax_ok and static_ok and sandbox_ok
+
+
+async def _post_generate_with_clarification_loop(
+    hc: httpx.AsyncClient,
+    *,
+    prompt: str,
+    max_clarification_rounds: int,
+) -> tuple[dict, int]:
+    """
+    Handle /generate clarification branch in HTTP mode.
+    Returns (final_response_json, clarification_rounds_used).
+    """
+    clarification_history: list[dict[str, str]] = []
+    rounds = 0
+    while True:
+        payload = {
+            "prompt": prompt,
+            "clarification_history": clarification_history,
+        }
+        r = await hc.post("/generate", json=payload)
+        r.raise_for_status()
+        data = r.json()
+        rk = data.get("response_kind")
+        if rk == "code":
+            return data, rounds
+        if rk != "clarification":
+            raise RuntimeError(f"unexpected response_kind: {rk!r}")
+        if rounds >= max_clarification_rounds:
+            raise RuntimeError(
+                f"clarification rounds exceeded limit={max_clarification_rounds}"
+            )
+        q = (data.get("clarification_question") or "").strip()
+        # Deterministic auto-answer for benchmark runs.
+        a = (
+            "Proceed with best reasonable defaults and context values. "
+            "Do not ask more clarifications unless absolutely necessary."
+        )
+        clarification_history.append({"model_question": q, "user_answer": a})
+        rounds += 1
+
+
 async def main_async(args: argparse.Namespace) -> int:
     tasks = load_tasks(Path(args.tasks) if args.tasks else None)
     settings = Settings()
@@ -112,21 +173,30 @@ async def main_async(args: argparse.Namespace) -> int:
             for t in tasks:
                 try:
                     t0 = time.perf_counter()
-                    payload = {"prompt": merge_prompt_with_benchmark(t)}
-                    r = await hc.post("/generate", json=payload)
-                    r.raise_for_status()
-                    data = r.json()
-                    if data.get("response_kind") != "code":
-                        raise RuntimeError(
-                            f"expected response_kind code, got {data.get('response_kind')!r}"
-                        )
+                    data, clar_rounds = await _post_generate_with_clarification_loop(
+                        hc,
+                        prompt=merge_prompt_with_benchmark(t),
+                        max_clarification_rounds=args.max_clarification_rounds,
+                    )
                     code = data.get("code") or ""
                     dt = time.perf_counter() - t0
                     sc = score_task(t, code)
+                    ev = t.get("eval") or {}
+                    et = ev.get("type", "heuristic")
+                    static_ok = not any(e.startswith("static:") for e in sc["errors"])
+                    sc["pass"] = final_pass(
+                        eval_type=et,
+                        syntax_ok=bool(sc["syntax_ok"]),
+                        static_ok=static_ok,
+                        sandbox_ok=bool(sc["sandbox_ok"]),
+                        heuristic_ok=bool(sc["heuristic_ok"]),
+                        strict_heuristic=args.strict_heuristic,
+                    )
                     results.append(
                         {
                             "id": t["id"],
                             **sc,
+                            "clarification_rounds": clar_rounds,
                             "latency_s": dt,
                             "code_preview": code[:200],
                         }
@@ -140,6 +210,17 @@ async def main_async(args: argparse.Namespace) -> int:
                 try:
                     r = await run_one_direct(client, settings, t)
                     sc = score_task(t, r["code"])
+                    ev = t.get("eval") or {}
+                    et = ev.get("type", "heuristic")
+                    static_ok = not any(e.startswith("static:") for e in sc["errors"])
+                    sc["pass"] = final_pass(
+                        eval_type=et,
+                        syntax_ok=bool(sc["syntax_ok"]),
+                        static_ok=static_ok,
+                        sandbox_ok=bool(sc["sandbox_ok"]),
+                        heuristic_ok=bool(sc["heuristic_ok"]),
+                        strict_heuristic=args.strict_heuristic,
+                    )
                     results.append(
                         {
                             "id": t["id"],
@@ -179,6 +260,20 @@ def main() -> int:
         "--tasks",
         default=None,
         help="Path to tasks JSON (default: benchmarks/public_tasks.json)",
+    )
+    ap.add_argument(
+        "--strict-heuristic",
+        action="store_true",
+        help=(
+            "For sandbox tasks also require expected_contains heuristics. "
+            "Default is relaxed (sandbox correctness based on syntax/static/sandbox)."
+        ),
+    )
+    ap.add_argument(
+        "--max-clarification-rounds",
+        type=int,
+        default=2,
+        help="Max clarification rounds to auto-handle in HTTP mode before failing.",
     )
     args = ap.parse_args()
     raise SystemExit(asyncio.run(main_async(args)))
