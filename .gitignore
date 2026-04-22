@@ -44,12 +44,6 @@ Thumbs.db
 
 # Public sample PDF is tracked in git (no LFS) — do not add *.pdf here
 
-# C4 / PlantUML: vendor clone + rendered outputs (see docs/c4/README.md)
-docs/c4/vendor/
-docs/c4/out/
-docs/c4/diagrams/out/
-
-docs/c4
 
 c4
 c4.zip
